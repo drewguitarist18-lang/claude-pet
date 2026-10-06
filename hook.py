@@ -1,13 +1,13 @@
-"""Claude Code hook for the status pet.
+"""Claude Code hook for the status pet and the Claude Office.
 
-Usage (from a hook): python hook.py <SessionStart|UserPromptSubmit|PreToolUse|
-                                      PostToolUse|Notification|Stop|SessionEnd>
+Usage (from a hook): python hook.py <Event>
+Events: SessionStart UserPromptSubmit PreToolUse PostToolUse Notification
+        Stop SubagentStart SubagentStop SessionEnd
 
-- Sets the pet's status (working / waiting / idle / celebrate) and a short
-  description of the current tool for his speech bubble.
+- Keeps one entry per open session in ~/.claude-pet/sessions.json (status,
+  current tool, context fill, project, subagents) for the office view.
+- Mirrors the latest status/detail/context into small files for the pet.
 - Plays a sound when Claude needs you (toggle in the pet's right-click menu).
-- Tracks open sessions in ~/.claude-pet/sessions.json, with the claude.exe
-  process of each, so the pet can quit or hide when Claude does.
 - Launches the pet if it isn't running.
 """
 import json
@@ -17,17 +17,14 @@ import sys
 import time
 from pathlib import Path
 
-DIR = Path.home() / ".claude-pet"
-STATUS = DIR / "status"
-DETAIL = DIR / "detail"
-TASK_START = DIR / "task_start"
-SESSIONS = DIR / "sessions.json"
-HEARTBEAT = DIR / "heartbeat"
+import shared
+from shared import CONFIG, CONTEXT, DETAIL, DIR, HEARTBEAT, STATUS
+
 LAUNCHING = DIR / "launching"
-CONFIG = DIR / "config.json"
 PET = Path(__file__).with_name("pet.py")
-STALE_AFTER = 12 * 3600
+DEFAULT_WINDOW = 200_000  # override with "context_window" in config.json
 CELEBRATE_AFTER = 30  # seconds of work before a finished task gets confetti
+SUBAGENT_STALE = 30 * 60
 
 STATUS_FOR = {
     "SessionStart": "idle",
@@ -100,39 +97,6 @@ def claude_ancestor_pids():
     return None, None
 
 
-def pid_alive(pid):
-    import ctypes
-
-    k32 = ctypes.windll.kernel32
-    handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
-    if not handle:
-        return False
-    code = ctypes.c_ulong()
-    k32.GetExitCodeProcess(handle, ctypes.byref(code))
-    k32.CloseHandle(handle)
-    return code.value == 259  # STILL_ACTIVE
-
-
-# ----------------------------------------------------------------- sessions
-
-def load_sessions():
-    try:
-        data = json.loads(SESSIONS.read_text())
-    except (OSError, ValueError):
-        return {}
-    now = time.time()
-    live = {}
-    for key, val in data.items():
-        if not isinstance(val, dict):
-            continue
-        if val.get("pid"):
-            if pid_alive(val["pid"]):
-                live[key] = val
-        elif now - val.get("ts", 0) < STALE_AFTER:
-            live[key] = val
-    return live
-
-
 def launch_pet():
     if age(HEARTBEAT) < 5 or age(LAUNCHING) < 10:
         return
@@ -148,16 +112,12 @@ def launch_pet():
 
 # ------------------------------------------------------------ bubble / sound
 
-def short_path(value):
-    name = Path(str(value)).name if value else ""
-    return name
-
-
 def describe_tool(payload):
     """A few words about what Claude is doing, for the speech bubble."""
     name = payload.get("tool_name", "")
     args = payload.get("tool_input") or {}
-    target = short_path(args.get("file_path") or args.get("notebook_path") or args.get("path"))
+    target = Path(str(args.get("file_path") or args.get("notebook_path")
+                      or args.get("path") or "")).name
     if name in ("Edit", "MultiEdit", "NotebookEdit"):
         return f"Editing {target}" if target else "Editing a file"
     if name == "Write":
@@ -165,6 +125,9 @@ def describe_tool(payload):
     if name == "Read":
         return f"Reading {target}" if target else "Reading a file"
     if name in ("Bash", "PowerShell"):
+        summary = str(args.get("description") or "").strip()
+        if summary:
+            return summary
         words = str(args.get("command", "")).split()
         return "Running " + " ".join(words[:3]) if words else "Running a command"
     if name in ("Grep", "Glob"):
@@ -178,6 +141,40 @@ def describe_tool(payload):
     if name.startswith("mcp__"):
         return "Using " + name.split("__")[-1].replace("_", " ")
     return name or "Working…"
+
+
+def context_tokens(transcript_path):
+    """Tokens currently in context, from the newest main-thread usage record."""
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 400_000))
+            tail = f.read().decode("utf-8", "ignore")
+    except (OSError, TypeError):
+        return None
+    for line in reversed(tail.splitlines()):
+        if '"usage"' not in line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        usage = (record.get("message") or {}).get("usage")
+        if record.get("isSidechain") or not usage:
+            continue
+        return sum(usage.get(k, 0) for k in (
+            "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+    return None
+
+
+def context_window(tokens):
+    try:
+        window = int(json.loads(CONFIG.read_text()).get("context_window", DEFAULT_WINDOW))
+    except (OSError, ValueError, TypeError):
+        window = DEFAULT_WINDOW
+    if tokens > window:  # bigger than assumed (e.g. a 1M model)
+        window = 1_000_000 if tokens <= 1_000_000 else tokens
+    return window
 
 
 def sound_enabled():
@@ -198,6 +195,59 @@ def beep():
 
 # --------------------------------------------------------------------- main
 
+def update_entry(entry, event, payload, now):
+    """Apply one hook event to a session's entry; returns (status, detail)."""
+    status = STATUS_FOR.get(event, "idle")
+    detail = entry.get("detail", "")
+
+    # Tool events from inside a subagent belong to that subagent's own block.
+    sub = (entry.get("subagents") or {}).get(payload.get("agent_id"))
+    if sub is not None and event in ("PreToolUse", "PostToolUse"):
+        if event == "PreToolUse":  # keep showing the last action between tools
+            sub["tools"] = sub.get("tools", 0) + 1
+            sub["detail"] = describe_tool(payload)
+        return entry.get("status", "idle"), detail
+
+    if event == "UserPromptSubmit":
+        entry["task_start"] = now
+        detail = "Thinking…"
+    elif event == "PreToolUse":
+        entry["tools"] = entry.get("tools", 0) + 1
+        detail = describe_tool(payload)
+    elif event == "PostToolUse":
+        detail = "Thinking…"
+    elif event == "Stop":
+        started = entry.pop("task_start", None)
+        if started and CELEBRATE_AFTER <= now - started < 6 * 3600:
+            status = "celebrate"
+        entry["done"] = entry.get("done", 0) + 1
+        detail = ""
+    elif event == "SessionStart":
+        detail = ""
+    elif event in ("SubagentStart", "SubagentStop"):
+        subs = entry.setdefault("subagents", {})
+        agent_id = payload.get("agent_id") or payload.get("agent_type") or "agent"
+        if event == "SubagentStart":
+            subs[agent_id] = {"type": payload.get("agent_type") or "agent", "ts": now}
+        else:
+            subs.pop(agent_id, None)
+        status = entry.get("status", "idle")  # subagents don't change the parent's status
+
+    # Drop subagents that never reported a stop.
+    entry["subagents"] = {
+        k: v for k, v in entry.get("subagents", {}).items() if now - v["ts"] < SUBAGENT_STALE
+    }
+
+    tokens = context_tokens(payload.get("transcript_path"))
+    if tokens is not None:
+        entry["tokens"], entry["window"] = tokens, context_window(tokens)
+
+    if status != entry.get("status") or event in ("PreToolUse", "UserPromptSubmit"):
+        entry["status_ts"] = now
+    entry["status"], entry["detail"] = status, detail
+    return status, detail
+
+
 def main():
     event = sys.argv[1] if len(sys.argv) > 1 else "Stop"
     try:
@@ -205,35 +255,36 @@ def main():
     except ValueError:
         payload = {}
     session_id = payload.get("session_id", "unknown")
+    now = time.time()
 
     DIR.mkdir(parents=True, exist_ok=True)
-    sessions = load_sessions()
-    if event == "SessionEnd":
-        sessions.pop(session_id, None)
-    else:
-        pid, app = claude_ancestor_pids()
-        sessions[session_id] = {"ts": time.time(), "pid": pid, "app": app}
-    SESSIONS.write_text(json.dumps(sessions))
+    pid, app = claude_ancestor_pids()  # slow-ish, so look it up before taking the lock
+    status, detail, entry = "idle", "", None
 
-    if not sessions:
+    with shared.sessions_lock():  # several hooks can fire at once (parallel tools, subagents)
+        sessions = shared.live_sessions()
+        if event == "SessionEnd":
+            sessions.pop(session_id, None)
+        else:
+            entry = sessions.setdefault(session_id, {})
+            entry.setdefault("started", now)
+            entry.update(ts=now, pid=pid, app=app)
+            cwd = payload.get("cwd")
+            if cwd:
+                entry["cwd"], entry["project"] = cwd, Path(cwd).name or cwd
+            status, detail = update_entry(entry, event, payload, now)
+        shared.write_sessions(sessions)
+
+    if not sessions or entry is None:
         return
 
-    status = STATUS_FOR.get(event, "idle")
-    if event == "UserPromptSubmit":
-        TASK_START.write_text(str(time.time()))
-        DETAIL.write_text("Thinking…")
-    elif event == "PreToolUse":
-        DETAIL.write_text(describe_tool(payload))
-    elif event == "PostToolUse":
-        DETAIL.write_text("Thinking…")
-    elif event == "Stop":
-        if CELEBRATE_AFTER <= age(TASK_START) < 6 * 3600:
-            status = "celebrate"
-        TASK_START.unlink(missing_ok=True)
-    elif event == "Notification" and sound_enabled():
-        beep()
-
+    # Mirror the latest activity into the files the pet reads.
     STATUS.write_text(status)
+    DETAIL.write_text(detail)
+    if "tokens" in entry:
+        CONTEXT.write_text(json.dumps({"tokens": entry["tokens"], "window": entry["window"]}))
+    if event == "Notification" and sound_enabled():
+        beep()
     launch_pet()
 
 

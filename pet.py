@@ -7,7 +7,8 @@ State comes from ~/.claude-pet/status (written by hook.py):
   celebrate  jumps with confetti after a long task finishes
 
 Drag with the left mouse button to put him on any ledge (he patrols that
-height). Right-click for outfits, sound and quit.
+height). Right-click for the Claude Office view, outfits, sound and quit.
+While running, the pet also serves the Claude Office at http://127.0.0.1:8765.
 """
 import ctypes
 import json
@@ -19,12 +20,13 @@ import time
 import tkinter as tk
 from pathlib import Path
 
-DIR = Path.home() / ".claude-pet"
-STATUS_FILE = DIR / "status"
-DETAIL_FILE = DIR / "detail"
-SESSIONS_FILE = DIR / "sessions.json"
-HEARTBEAT = DIR / "heartbeat"
-CONFIG_FILE = DIR / "config.json"
+import office
+import shared
+from shared import CONFIG as CONFIG_FILE
+from shared import CONTEXT as CONTEXT_FILE
+from shared import DETAIL as DETAIL_FILE
+from shared import DIR, HEARTBEAT
+from shared import STATUS as STATUS_FILE
 
 CELL = 5
 COLS, ROWS = 12, 8
@@ -75,46 +77,37 @@ def load_config():
     return {
         "outfit": outfit if outfit in OUTFITS else "none",
         "sound": bool(cfg.get("sound", True)),
+        "energy_bar": bool(cfg.get("energy_bar", True)),
     }
 
 
-def save_config(cfg):
+def read_context_fill():
+    """Fraction of the context window in use (0-1), from hook.py's context.json."""
     try:
-        CONFIG_FILE.write_text(json.dumps(cfg))
+        data = json.loads(CONTEXT_FILE.read_text())
+        return max(0.0, min(1.0, data["tokens"] / data["window"]))
+    except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError):
+        return 0.0
+
+
+def save_config(cfg):
+    """Merge into config.json so settings the menu doesn't own (context_window) survive."""
+    try:
+        try:
+            merged = json.loads(CONFIG_FILE.read_text())
+        except (OSError, ValueError):
+            merged = {}
+        merged.update(cfg)
+        CONFIG_FILE.write_text(json.dumps(merged))
     except OSError:
         pass
 
 
 # ------------------------------------------------------- session / window info
 
-def pid_alive(pid):
-    k32 = ctypes.windll.kernel32
-    handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
-    if not handle:
-        return False
-    code = ctypes.c_ulong()
-    k32.GetExitCodeProcess(handle, ctypes.byref(code))
-    k32.CloseHandle(handle)
-    return code.value == 259  # STILL_ACTIVE
-
-
 def open_sessions():
     """Live session entries from sessions.json."""
-    try:
-        data = json.loads(SESSIONS_FILE.read_text())
-    except (OSError, ValueError):
-        return []
-    now = time.time()
-    live = []
-    for val in data.values():
-        if not isinstance(val, dict):
-            continue
-        if val.get("pid"):
-            if pid_alive(val["pid"]):
-                live.append(val)
-        elif now - val.get("ts", 0) < 12 * 3600:
-            live.append(val)
-    return live
+    return list(shared.live_sessions().values())
 
 
 WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
@@ -192,6 +185,7 @@ class Pet:
         self.cfg = load_config()
         self.build_menu()
 
+        self.context_fill = read_context_fill()
         self.shown = True
         self.keep_alive = "--keep" in sys.argv
         self.last_check = 0.0
@@ -213,17 +207,27 @@ class Pet:
                 label=name.title(), value=name, variable=self.outfit_var,
                 command=self.save_menu_choices,
             )
+        self.menu.add_command(label="Open Claude Office", command=office.open_office)
         self.menu.add_cascade(label="Outfit", menu=outfits)
         self.sound_var = tk.BooleanVar(value=self.cfg["sound"])
         self.menu.add_checkbutton(
             label="Sound when he needs you", variable=self.sound_var,
             command=self.save_menu_choices,
         )
+        self.energy_var = tk.BooleanVar(value=self.cfg["energy_bar"])
+        self.menu.add_checkbutton(
+            label="Energy bar", variable=self.energy_var,
+            command=self.save_menu_choices,
+        )
         self.menu.add_separator()
         self.menu.add_command(label="Quit", command=self.root.destroy)
 
     def save_menu_choices(self):
-        self.cfg = {"outfit": self.outfit_var.get(), "sound": self.sound_var.get()}
+        self.cfg = {
+            "outfit": self.outfit_var.get(),
+            "sound": self.sound_var.get(),
+            "energy_bar": self.energy_var.get(),
+        }
         save_config(self.cfg)
 
     def show_menu(self, event):
@@ -255,6 +259,7 @@ class Pet:
             HEARTBEAT.write_text(str(now))
         except OSError:
             pass
+        self.context_fill = read_context_fill()
         if self.keep_alive:
             return True
         any_open, show = pet_visibility()
@@ -273,6 +278,13 @@ class Pet:
                 return False
         return True
 
+    # energy ----------------------------------------------------------------
+    @property
+    def tired(self):
+        """0 fresh, 1 sleepy, 2 tired, 3 exhausted (by how full the context is)."""
+        fill = self.context_fill
+        return 3 if fill >= 0.9 else 2 if fill >= 0.75 else 1 if fill >= 0.5 else 0
+
     # motion ----------------------------------------------------------------
     def update_motion(self, state, now):
         """Return True if he is walking this frame."""
@@ -287,7 +299,7 @@ class Pet:
                 self.direction *= -1
         if not self.walking:
             return False
-        self.x += self.direction * 1.5
+        self.x += self.direction * 1.5 * (1.0, 0.9, 0.65, 0.4)[self.tired]
         lo, hi = -OX, self.sw - W + OX  # the sprite, not the window, hits the edge
         if self.x < lo:
             self.x, self.direction = lo, 1
@@ -428,13 +440,16 @@ class Pet:
             self.px(col, 6, oy, h=2 - drop)
 
         # Eyes (cols 3 and 8, row 1)
+        tired = self.tired
         blink = state == "idle" and not walking and (t % 4.5) < 0.15
-        wink = state in ("idle", "working") and (t % 6.5) < 0.4
+        wink = state in ("idle", "working") and tired < 2 and (t % 6.5) < 0.4
+        yawn = tired >= 2 and state == "idle" and not walking and (t % 22) < 1.6
         shift = 1 if (walking and self.direction > 0) else 0
+        lid = (0, 1, 2.5, 3.8)[tired]  # eyelid height in px: heavier as context fills
         for col in (3, 8):
             x0 = OX + col * CELL
             y0 = oy + CELL
-            if state == "sleeping" or blink or (wink and col == 8):
+            if state == "sleeping" or blink or yawn or (wink and col == 8):
                 self.px(col, 1, oy + CELL // 2, color=EYE, h=0.4)
             elif state == "celebrate":
                 c.create_line(x0, y0 + CELL, x0 + CELL / 2, y0, x0 + CELL, y0 + CELL,
@@ -442,6 +457,17 @@ class Pet:
             else:
                 x0 += shift if self.direction > 0 else -shift
                 c.create_rectangle(x0, y0, x0 + CELL, y0 + CELL, fill=EYE, outline=EYE)
+                if lid:
+                    c.create_rectangle(x0 - 1, y0 - 1, x0 + CELL + 1, y0 + lid,
+                                       fill=BODY, outline=BODY)
+        if yawn:
+            c.create_rectangle(OX + 5 * CELL, oy + 3 * CELL, OX + 7 * CELL, oy + 4.4 * CELL,
+                               fill=EYE, outline=EYE)
+        if tired == 3 and state != "sleeping":
+            sway = math.sin(t * 2) * 1.5
+            drop_x = OX + 9.5 * CELL + sway
+            c.create_polygon(drop_x, oy - 8, drop_x - 3, oy - 2, drop_x + 3, oy - 2,
+                             fill="#7dcfff", outline="#4aa3d8")
 
         self.draw_outfit_face(oy)
         self.draw_outfit_top(oy)
@@ -465,6 +491,22 @@ class Pet:
                 phase = (t * 0.45 + i / 3) % 1
                 c.create_text(W / 2 + 24 + phase * 16, oy - 2 - phase * 26, text="z",
                               fill="#7a7f99", font=("Segoe UI", int(8 + phase * 6), "bold"))
+        elif tired == 3:
+            self.bubble(f"Context {self.context_fill:.0%} full", oy, accent="#e0af68")
+
+        if self.cfg["energy_bar"]:
+            self.draw_energy_bar()
+
+    def draw_energy_bar(self):
+        """Tiny pixel bar under his feet: full when context is empty."""
+        c = self.canvas
+        left = OX + 10
+        width = SPRITE_W - 20
+        energy = 1.0 - self.context_fill
+        color = "#9ece6a" if energy > 0.5 else "#e0af68" if energy > 0.25 else "#f7768e"
+        top = H - 4
+        c.create_rectangle(left - 1, top - 1, left + width + 1, top + 3, fill="#232433", outline="")
+        c.create_rectangle(left, top, left + width * energy, top + 2, fill=color, outline="")
 
     def run(self):
         self.root.mainloop()
@@ -476,4 +518,5 @@ if __name__ == "__main__":
     DIR.mkdir(parents=True, exist_ok=True)
     if not STATUS_FILE.exists():
         STATUS_FILE.write_text("idle")
+    office.start_server()  # the Claude Office view lives as long as the pet does
     Pet().run()
