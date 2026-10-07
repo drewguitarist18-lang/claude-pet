@@ -1,0 +1,16 @@
+{
+  "name": "claude-pet",
+  "version": "0.1.0",
+  "description": "Clawd, a pixel desktop pet that shows what Claude Code is doing, plus the Claude Office view of every open session.",
+  "author": {
+    "name": "drewguitarist18-lang"
+  },
+  "repository": "https://github.com/drewguitarist18-lang/claude-pet",
+  "license": "MIT",
+  "keywords": [
+    "pet",
+    "status",
+    "desktop",
+    "windows"
+  ]
+}

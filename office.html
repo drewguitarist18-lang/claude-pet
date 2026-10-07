@@ -216,6 +216,33 @@ function drawClawd(ctx, x, y, c, o) {
   }
 }
 
+// Clawd Bot's bots: each has its own pixel shape (# body, k darker accent, e eye).
+const BOT_SHAPES = {
+  crab:  ["..########..", "..#e####e#..", "############", "############", "..########..", "..########..", "..#.#..#.#..", "..#.#..#.#.."],
+  scout: ["...#....#...", "....#..#....", "..########..", ".#e######e#.", ".##########.", "..########..", "...#.##.#...", "..##....##.."],
+  byte:  [".....kk.....", "..########..", ".##e####e##.", ".##########.", "#.########.#", "#.########.#", "..##....##..", "..##....##.."],
+  muse:  ["...######...", "..########..", ".##e####e##.", ".##########.", ".##########.", ".##########.", ".##########.", ".##.##.##.##"],
+  coach: ["...######...", "..kkkkkkkk..", ".##e####e##.", ".##########.", "###.####.###", "##..####..##", "...##..##...", "...##..##..."],
+};
+function drawBot(ctx, bot, x, y, c, o) {
+  const { state = "idle", t = 0 } = o, rows = BOT_SHAPES[bot.shape] || BOT_SHAPES.crab;
+  const n = parseInt(bot.color.slice(1), 16), mix = (m, p) => `rgb(${[n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (m - v) * p)).join(",")})`;
+  const dark = mix(0, 0.4), bob = state === "working" ? Math.abs(Math.sin(t * 6)) * 0.35 : state === "waiting" ? Math.abs(Math.sin(t * 4)) * 0.5 : 0;
+  const closed = state === "sleeping" || t % 4.5 < 0.15, Y = y - bob * c;
+  rows.forEach((row, ry) => [...row].forEach((ch, cx) => {
+    if (ch === "." ) return;
+    const left = Math.round(x + cx * c), size = Math.ceil(c);
+    ctx.fillStyle = ch === "k" ? dark : bot.color; ctx.fillRect(left, Math.round(Y + ry * c), size, size);
+    if (ch === "e") { ctx.fillStyle = "#000"; closed ? ctx.fillRect(left, Math.round(Y + (ry + 0.45) * c), size, Math.ceil(c * 0.2)) : ctx.fillRect(left + (state === "working" ? Math.round(c * 0.3) : 0), Math.round(Y + ry * c), size, size); }
+  }));
+  if (state === "working") for (let i = 0; i < 3; i++) {   // typing dots
+    const on = Math.floor(t * 4) % 3 === i;
+    ctx.fillStyle = on ? bot.color : mix(255, 0.55);
+    ctx.fillRect(Math.round(x + (4.2 + i * 1.5) * c), Math.round(Y - 1.4 * c - (on ? c * 0.3 : 0)), Math.ceil(c * 0.9), Math.ceil(c * 0.9));
+  }
+  if (state === "waiting") { ctx.fillStyle = theme.waiting; ctx.font = `bold ${Math.round(c * 3)}px system-ui`; ctx.textAlign = "left"; ctx.fillText("!", x + 10.6 * c, Y + 1.5 * c); }
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
@@ -269,7 +296,8 @@ function drawStation(ctx, station, ox, oy, t, isSel) {
   ctx.fillStyle = "#fff"; ctx.textBaseline = "middle"; ctx.fillText(label, tagX + 22, tagY + 11.5);
 
   // sprite behind desk
-  drawClawd(ctx, ox + 28, oy + 74, 7, { state: st, t, tired, seed, body, look: st === "working" ? 1 : 0 });
+  if (!isSub && s.bot) drawBot(ctx, s.bot, ox + 28, oy + 74, 7, { state: st, t });
+  else drawClawd(ctx, ox + 28, oy + 74, 7, { state: st, t, tired, seed, body, look: st === "working" ? 1 : 0 });
   // desk
   ctx.fillStyle = theme["desk-top"]; roundRect(ctx, ox + 14, oy + 128, 112, 10, 4); ctx.fill();
   ctx.fillStyle = theme["desk-front"]; ctx.fillRect(ox + 20, oy + 138, 100, 24);
@@ -468,6 +496,7 @@ function frame(ms) {
     const x = stations[i], cv = row.querySelector("canvas"); if (!x || !cv) return;
     const c2 = cv.getContext("2d"); c2.clearRect(0, 0, cv.width, cv.height);
     if (x.kind === "sub") drawClawd(c2, 6, 12, 9, { state: "working", t, body: subColor(x.a), seed: i });
+    else if (x.s.bot) drawBot(c2, x.s.bot, 6, 12, 9, { state: effState(x.s), t });
     else drawClawd(c2, 6, 12, 9, { state: effState(x.s), t, tired: tiredLevel(fill(x.s)), seed: hash(x.s.id) % 50 });
   });
   const lg = $("logo").getContext("2d"); lg.clearRect(0, 0, 108, 84);

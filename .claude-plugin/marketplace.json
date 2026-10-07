@@ -1,0 +1,13 @@
+{
+  "name": "claude-pet",
+  "owner": {
+    "name": "drewguitarist18-lang"
+  },
+  "plugins": [
+    {
+      "name": "claude-pet",
+      "source": "./",
+      "description": "Clawd, the desktop status pet for Claude Code, plus the Claude Office."
+    }
+  ]
+}

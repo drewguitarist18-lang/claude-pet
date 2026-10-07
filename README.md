@@ -28,6 +28,16 @@ screen with the current action, an energy bar, and little colored helpers for
 running subagents. Click a station for details. Light and dark themes follow
 your system.
 
+### Clawd Bot in the Office
+
+[**Clawd Bot**](https://github.com/drewguitarist18-lang/clawd-bot) is a
+companion chat app built on Claude Code, with its own bots and sprites.
+
+Chats from the **Clawd Bot** app run as real Claude Code sessions in
+`~/.clawd-bot/workspaces/<bot>`. The Office recognises that folder and draws the
+session as the bot: its own pixel shape, color and name (Scout, Byte, Muse,
+Coach, or any bot you make), with the same live status and energy bar.
+
 ## How it works
 
 - `hook.py` runs from Claude Code hooks. It keeps one entry per session in
@@ -39,10 +49,21 @@ your system.
 
 ## Install
 
-Add hooks to `~/.claude/settings.json`, one per event, each running
-`python "<path to>/hook.py" <Event>`, for: `SessionStart`, `UserPromptSubmit`,
-`PreToolUse`, `PostToolUse`, `Notification`, `Stop`, `SubagentStart`,
-`SubagentStop`, `SessionEnd`.
+Needs Windows and Python 3 on your PATH. Then, inside Claude Code:
+
+```
+/plugin marketplace add drewguitarist18-lang/claude-pet
+/plugin install claude-pet@claude-pet
+```
+
+Restart Claude Code and Clawd appears on your next session. To remove him:
+`/plugin uninstall claude-pet@claude-pet`.
+
+**Manual install** (no plugin): add a hook to `~/.claude/settings.json` for each
+of `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
+`Notification`, `Stop`, `SubagentStart`, `SubagentStop` and `SessionEnd`, each
+running `python "<path to>/hook.py" <Event>`. Don't do both, or every event
+fires twice.
 
 Run him by hand (stays up without a session): `python pet.py --keep`.
 Run just the office: `python office.py`.

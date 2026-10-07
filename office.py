@@ -6,6 +6,8 @@ The pet starts this in a background thread; you can also run it alone:
     python office.py        # then open http://127.0.0.1:8765
 """
 import json
+import os
+import re
 import threading
 import time
 import webbrowser
@@ -19,12 +21,44 @@ URL = f"http://{HOST}:{PORT}"
 PAGE = Path(__file__).with_name("office.html")
 
 
+BOT_STORE = Path(os.environ.get("CLAWD_BOT_HOME") or Path.home() / ".clawd-bot")
+BOT_MARKER = "/.clawd-bot/workspaces/"
+_bot_cache = {"mtime": None, "bots": {}}
+
+
+def bot_for(cwd):
+    """The Clawd Bot a session belongs to, if it ran in one of its workspace folders.
+
+    Clawd Bot runs every bot chat as a real Claude Code session inside
+    ~/.clawd-bot/workspaces/<bot id>, so the folder tells us which bot it was.
+    """
+    path = re.sub(r"/+", "/", str(cwd or "").replace("\\", "/"))
+    marker = BOT_MARKER if BOT_STORE.name == ".clawd-bot" else f"/{BOT_STORE.name}/workspaces/"
+    if marker.lower() not in path.lower():
+        return None
+    bot_id = path[path.lower().index(marker.lower()) + len(marker):].split("/")[0].lower()
+    file = BOT_STORE / "bots.json"
+    try:
+        mtime = file.stat().st_mtime
+        if mtime != _bot_cache["mtime"]:
+            bots = json.loads(file.read_text(encoding="utf-8")).get("bots", [])
+            _bot_cache.update(mtime=mtime, bots={b["id"].lower(): b for b in bots})
+    except (OSError, ValueError, KeyError):
+        return None
+    bot = _bot_cache["bots"].get(bot_id)
+    if not bot:
+        return None
+    return {"id": bot["id"], "name": bot["name"], "shape": bot["shape"], "color": bot["color"]}
+
+
 def snapshot():
     sessions = []
     for sid, s in shared.live_sessions().items():
+        bot = bot_for(s.get("cwd"))
         sessions.append({
             "id": sid,
-            "project": s.get("project") or "session",
+            "bot": bot,
+            "project": (bot or {}).get("name") or s.get("project") or "session",
             "cwd": s.get("cwd", ""),
             "status": s.get("status", "idle"),
             "status_ts": s.get("status_ts", s.get("started", time.time())),
