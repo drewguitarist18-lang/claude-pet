@@ -102,9 +102,13 @@ def launch_pet():
         return
     LAUNCHING.write_text(str(time.time()))
     exe = Path(sys.executable)
-    pythonw = exe.with_name("pythonw.exe")
+    if getattr(sys, "frozen", False):   # bundled in the Lithnode app: its windowless engine runs the pet
+        command = [str(exe.with_name("lithnode-server.exe")), "pet"]
+    else:
+        pythonw = exe.with_name("pythonw.exe")
+        command = [str(pythonw if pythonw.exists() else exe), str(PET)]
     subprocess.Popen(
-        [str(pythonw if pythonw.exists() else exe), str(PET)],
+        command,
         creationflags=0x00000008 | 0x08000000,  # DETACHED_PROCESS | CREATE_NO_WINDOW
         close_fds=True,
     )
