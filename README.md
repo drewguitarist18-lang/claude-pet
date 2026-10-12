@@ -13,6 +13,9 @@ as a little Clawd at a desk. Windows, Python 3 (standard library only).
 | waiting | waves, says "Needs you!", plays a sound |
 | celebrate | jumps with confetti after a task that took 30s+ |
 
+**In Lithnode:** while the [Lithnode](https://lithnode.com) app is open, Clawd turns into
+Lithnode's white crab; close Lithnode and he's Clawd again.
+
 **Energy:** he gets tired as the context window fills. Half-lidded at 50%,
 yawning and slower at 75%, sweating with a "Context N% full" bubble at 90%.
 A small energy bar sits under his feet.
