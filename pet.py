@@ -6,9 +6,10 @@ State comes from ~/.claude-pet/status (written by hook.py):
   waiting    waves and says he needs you
   celebrate  jumps with confetti after a long task finishes
 
+He only shows while Claude is open: the Claude desktop app's window (shown or
+minimized) or a terminal running Claude Code. Background agents don't count.
 Drag with the left mouse button to put him on any ledge (he patrols that
-height). Right-click for the Claude Office view, outfits, sound and quit.
-While running, the pet also serves the Claude Office at http://127.0.0.1:8765.
+height). Right-click for outfits, sound, the energy bar and quit.
 """
 import ctypes
 import json
@@ -20,7 +21,6 @@ import time
 import tkinter as tk
 from pathlib import Path
 
-import office
 import shared
 from shared import CONFIG as CONFIG_FILE
 from shared import CONTEXT as CONTEXT_FILE
@@ -120,8 +120,16 @@ def save_config(cfg):
 # ------------------------------------------------------- session / window info
 
 def open_sessions():
-    """Live session entries from sessions.json."""
-    return list(shared.live_sessions().values())
+    """Live sessions someone is looking at (background agents left out)."""
+    return [s for s in shared.live_sessions().values() if not s.get("headless")]
+
+
+def claude_running():
+    """True while any claude.exe runs (the desktop app or Claude Code)."""
+    try:
+        return "claude.exe" in shared.process_names()
+    except Exception:
+        return True   # can't tell: fall back to the sessions alone
 
 
 WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
@@ -174,7 +182,7 @@ def lithnode_open():
 
 def pet_visibility():
     """(any session open, should the pet be shown)."""
-    sessions = open_sessions()
+    sessions = open_sessions() if claude_running() else []
     if not sessions:
         return False, False
     show = any(not s.get("app") or app_window_visible(s["app"]) for s in sessions)
@@ -243,7 +251,6 @@ class Pet:
                 label=name.title(), value=name, variable=self.outfit_var,
                 command=self.save_menu_choices,
             )
-        self.menu.add_command(label="Open Claude Office", command=office.open_office)
         self.menu.add_cascade(label="Outfit", menu=outfits)
         self.sound_var = tk.BooleanVar(value=self.cfg["sound"])
         self.menu.add_checkbutton(
@@ -623,5 +630,4 @@ if __name__ == "__main__":
     DIR.mkdir(parents=True, exist_ok=True)
     if not STATUS_FILE.exists():
         STATUS_FILE.write_text("idle")
-    office.start_server()  # the Claude Office view lives as long as the pet does
     Pet().run()

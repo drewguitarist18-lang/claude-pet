@@ -1,4 +1,4 @@
-"""State shared by the hook, the pet and the office server."""
+"""State shared by the hook and the pet."""
 import contextlib
 import ctypes
 import json
@@ -25,6 +25,39 @@ def pid_alive(pid):
     k32.GetExitCodeProcess(handle, ctypes.byref(code))
     k32.CloseHandle(handle)
     return code.value == 259  # STILL_ACTIVE
+
+
+def process_table():
+    """pid -> (parent pid, exe name) for every running process."""
+    import ctypes
+    from ctypes import wintypes
+
+    class ENTRY(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_size_t),
+            ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260),
+        ]
+
+    k32 = ctypes.windll.kernel32
+    k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    snap = k32.CreateToolhelp32Snapshot(2, 0)  # TH32CS_SNAPPROCESS
+    table = {}
+    entry = ENTRY()
+    entry.dwSize = ctypes.sizeof(ENTRY)
+    ok = k32.Process32FirstW(snap, ctypes.byref(entry))
+    while ok:
+        table[entry.th32ProcessID] = (entry.th32ParentProcessID, entry.szExeFile.lower())
+        ok = k32.Process32NextW(snap, ctypes.byref(entry))
+    k32.CloseHandle(snap)
+    return table
+
+
+def process_names():
+    """Exe names (lowercase) of every running process."""
+    return {name for _, name in process_table().values()}
 
 
 def live_sessions():

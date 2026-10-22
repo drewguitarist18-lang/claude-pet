@@ -7,7 +7,7 @@
     {
       "name": "claude-pet",
       "source": "./",
-      "description": "Clawd, the desktop status pet for Claude Code, plus the Claude Office."
+      "description": "Clawd, the desktop status pet for Claude Code."
     }
   ]
 }

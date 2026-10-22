@@ -1,2 +1,9 @@
 __pycache__/
 *.pyc
+build/
+dist/
+packaging/.venv-build/
+packaging/*.ico
+packaging/*.bmp
+packaging/claude-pet.png
+.vercel/

@@ -1,75 +1,66 @@
 # Claude Pet
 
-Clawd, a small pixel companion that walks around your desktop and shows what
-Claude Code is doing, plus a **Claude Office** that shows every open session
-as a little Clawd at a desk. Windows, Python 3 (standard library only).
+Clawd, a small pixel pet who lives on your Windows desktop while Claude is open
+and shows what Claude Code is doing. Site: see `site/`.
 
-## The pet
+## Download
+
+**[ClaudePetSetup.exe](https://github.com/drewguitarist18-lang/claude-pet/releases/latest/download/ClaudePetSetup.exe)**
+(Windows 10/11, about 10 MB, no Python or admin rights needed). It installs to
+`%LOCALAPPDATA%\Programs\Claude Pet` and adds Clawd's hooks to
+`~/.claude/settings.json`, backing that file up first. Uninstall from
+Settings → Apps; that removes the hooks too.
+
+## What he does
 
 | State | What he does |
 |---|---|
 | idle | wanders, blinks, winks; sleeps after 5 quiet minutes |
 | working | types on a little laptop; speech bubble shows the current tool |
-| waiting | waves, says "Needs you!", plays a sound |
+| waiting | waves, says "Needs you!", plays a chime |
 | celebrate | jumps with confetti after a task that took 30s+ |
-
-**In Lithnode:** while the [Lithnode](https://lithnode.com) app is open, Clawd turns into
-Lithnode's white crab; close Lithnode and he's Clawd again.
 
 **Energy:** he gets tired as the context window fills. Half-lidded at 50%,
 yawning and slower at 75%, sweating with a "Context N% full" bubble at 90%.
 A small energy bar sits under his feet.
 
-Drag him onto any ledge and he patrols it. Right-click for the office,
-outfits, sound, the energy bar and quit.
+**Only while Claude is open:** he shows while the Claude desktop app's window
+is open (or minimized) or Claude Code runs in a terminal, hides when the app
+is closed to the tray, and quits when the last session ends. Background
+sessions (`claude -p`, the Agent SDK, Lithnode's agents) never bring him up.
 
-## The office
+**In Lithnode:** while the [Lithnode](https://lithnode.com) app is open, Clawd turns into
+Lithnode's white crab; close Lithnode and he's Clawd again.
 
-Right-click the pet, then **Open Claude Office** (or browse to
-http://127.0.0.1:8765). Each session gets a station: its Clawd, a floating
-screen with the current action, an energy bar, and little colored helpers for
-running subagents. Click a station for details. Light and dark themes follow
-your system.
-
-### Clawd Bot in the Office
-
-[**Clawd Bot**](https://github.com/drewguitarist18-lang/clawd-bot) is a
-companion chat app built on Claude Code, with its own bots and sprites.
-
-Chats from the **Clawd Bot** app run as real Claude Code sessions in
-`~/.clawd-bot/workspaces/<bot>`. The Office recognises that folder and draws the
-session as the bot: its own pixel shape, color and name (Scout, Byte, Muse,
-Coach, or any bot you make), with the same live status and energy bar.
+Drag him onto any ledge and he patrols it. Right-click for outfits, the
+chime, the energy bar and quit.
 
 ## How it works
 
 - `hook.py` runs from Claude Code hooks. It keeps one entry per session in
-  `~/.claude-pet/sessions.json` and launches the pet.
-- `pet.py` is the desktop pet. It hides when the Claude window is closed to
-  the tray, quits when the last session ends, and serves the office.
-- `office.py` + `office.html` are the office server and page (localhost only).
-- `shared.py` holds paths and session helpers used by all of the above.
+  `~/.claude-pet/sessions.json`, mirrors the latest status for the pet and
+  launches him. Lithnode's Office reads the same file.
+- `pet.py` is the desktop pet (tkinter, standard library only).
+- `shared.py` holds paths and session/process helpers.
+- `packaging/` builds the installer: `claude_pet_main.py` is the entry for
+  `ClaudePet.exe` (the pet) and `claude-pet-cli.exe` (`hook`, `install`,
+  `uninstall`). Build with `powershell -ExecutionPolicy Bypass -File packaging\build.ps1`
+  (one-time setup is at the top of that file); output is `dist\ClaudePetSetup.exe`.
+- `site/` is the website (one static page).
 
-## Install
+## Install from source (plugin)
 
-Needs Windows and Python 3 on your PATH. Then, inside Claude Code:
+Needs Windows and Python 3 on your PATH. Inside Claude Code:
 
 ```
 /plugin marketplace add drewguitarist18-lang/claude-pet
 /plugin install claude-pet@claude-pet
 ```
 
-Restart Claude Code and Clawd appears on your next session. To remove him:
-`/plugin uninstall claude-pet@claude-pet`.
-
-**Manual install** (no plugin): add a hook to `~/.claude/settings.json` for each
-of `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
-`Notification`, `Stop`, `SubagentStart`, `SubagentStop` and `SessionEnd`, each
-running `python "<path to>/hook.py" <Event>`. Don't do both, or every event
-fires twice.
-
+Use either the installer or the plugin, not both, or every event fires twice.
 Run him by hand (stays up without a session): `python pet.py --keep`.
-Run just the office: `python office.py`.
 
 `~/.claude-pet/config.json` can set `"context_window"` (default 200000; it
 switches to 1,000,000 on its own if a session goes past 200k).
+
+Not affiliated with or endorsed by Anthropic.

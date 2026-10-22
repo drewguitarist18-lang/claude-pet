@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Claude Pet · Clawd for your desktop</title>
+<meta name="description" content="Clawd is a tiny pixel pet who lives on your Windows desktop while Claude is open. He types when Claude works, waves when it needs you and celebrates when the job is done. Free and open source.">
+<meta property="og:title" content="Claude Pet">
+<meta property="og:description" content="A tiny pixel pet for Claude Code. He types when Claude works, waves when it needs you and celebrates when it's done.">
+<meta property="og:image" content="/og.png">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f6f1ea; --bg2: #efe7dc; --card: #fffdf9; --ink: #221b17; --muted: #6f655d; --line: #e4d9cc;
+    --clay: #d97757; --clay-ink: #b65a3c; --clay-soft: #f6dccf;
+    --screen: #1b1a22; --screen2: #24232e; --screen-ink: #e8e6f0; --task: #2b2a36;
+    --shadow: 0 1px 0 rgba(34, 27, 23, .04), 0 12px 32px -12px rgba(34, 27, 23, .18);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #131217; --bg2: #18171e; --card: #1d1c24; --ink: #f2ede7; --muted: #a59d95; --line: #2c2a35;
+    --clay: #e0845f; --clay-ink: #f09a76; --clay-soft: #3a2620;
+    --screen: #0d0c11; --screen2: #17161d; --task: #1f1e27;
+    --shadow: 0 1px 0 rgba(0, 0, 0, .3), 0 16px 40px -16px rgba(0, 0, 0, .7);
+    color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --bg: #131217; --bg2: #18171e; --card: #1d1c24; --ink: #f2ede7; --muted: #a59d95; --line: #2c2a35;
+    --clay: #e0845f; --clay-ink: #f09a76; --clay-soft: #3a2620;
+    --screen: #0d0c11; --screen2: #17161d; --task: #1f1e27;
+    --shadow: 0 1px 0 rgba(0, 0, 0, .3), 0 16px 40px -16px rgba(0, 0, 0, .7);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  canvas { image-rendering: pixelated; display: block; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding-inline: 20px; }
+  .px { font-family: "Pixelify Sans", "DM Mono", monospace; letter-spacing: .01em; }
+  .mono { font-family: "DM Mono", ui-monospace, Consolas, monospace; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  h2 { font: 700 clamp(1.9rem, 4.2vw, 2.7rem)/1.08 "Pixelify Sans", monospace; }
+  .eyebrow { font: 500 .78rem/1 "DM Mono", monospace; letter-spacing: .14em; text-transform: uppercase; color: var(--clay-ink); }
+  .lede { color: var(--muted); font-size: 1.12rem; max-width: 34em; }
+
+  /* nav */
+  nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid transparent; }
+  nav.scrolled { border-bottom-color: var(--line); }
+  nav .wrap { display: flex; align-items: center; gap: 18px; height: 62px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font: 700 1.15rem "Pixelify Sans", monospace; }
+  .brand canvas { width: 30px; height: 20px; }
+  nav .links { margin-left: auto; display: flex; gap: 22px; align-items: center; font-size: .95rem; }
+  nav .links a { text-decoration: none; color: var(--muted); }
+  nav .links a:hover { color: var(--ink); }
+  @media (max-width: 640px) { nav .links a.hide-sm { display: none; } }
+
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 22px; border-radius: 12px; font-weight: 700; text-decoration: none; border: 1px solid var(--line); background: var(--card); color: var(--ink); transition: transform .15s, box-shadow .15s; font-size: 1rem; }
+  .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+  .btn.primary { background: var(--clay); border-color: var(--clay); color: #fff; box-shadow: 0 4px 0 var(--clay-ink); }
+  .btn.primary:hover { box-shadow: 0 5px 0 var(--clay-ink), var(--shadow); }
+  .btn.primary:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--clay-ink); }
+  .btn.sm { padding: 8px 14px; font-size: .9rem; border-radius: 10px; box-shadow: 0 3px 0 var(--clay-ink); }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+
+  /* hero */
+  .hero { padding-block: 64px 30px; text-align: center; }
+  .hero h1 { font: 700 clamp(2.6rem, 8vw, 5rem)/1 "Pixelify Sans", monospace; margin: 18px auto 18px; max-width: 12em; }
+  .hero h1 em { font-style: normal; color: var(--clay); }
+  .hero .lede { margin: 0 auto 30px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .fine { margin-top: 14px; color: var(--muted); font-size: .88rem; }
+  .fine span + span::before { content: "·"; margin: 0 8px; }
+
+  /* the desktop stage */
+  .stage { margin: 48px auto 0; max-width: 940px; border-radius: 18px; overflow: hidden; background: var(--screen); box-shadow: var(--shadow); border: 1px solid var(--line); position: relative; }
+  .stage .sky { position: relative; height: 300px; background:
+      radial-gradient(60% 90% at 78% 0%, rgba(217, 119, 87, .28), transparent 70%),
+      radial-gradient(50% 70% at 10% 20%, rgba(122, 156, 240, .16), transparent 70%),
+      linear-gradient(180deg, #23212d, var(--screen)); }
+  .stage .win { position: absolute; left: 6%; top: 34px; width: min(52%, 430px); border-radius: 10px; background: var(--screen2); border: 1px solid #ffffff14; box-shadow: 0 20px 40px -20px #000; overflow: hidden; text-align: left; }
+  .win .bar { display: flex; gap: 6px; padding: 9px 12px; background: #ffffff08; border-bottom: 1px solid #ffffff0d; align-items: center; }
+  .win .bar i { width: 9px; height: 9px; border-radius: 50%; background: #ffffff22; }
+  .win .bar b { margin-left: 8px; font: 500 .72rem "DM Mono", monospace; color: #a8a4b8; }
+  .win .log { padding: 12px 14px; font: .78rem/1.75 "DM Mono", monospace; color: #c9c5d8; min-height: 150px; }
+  .win .log .u { color: #f09a76; }
+  .win .log .t { color: #7dcfff; }
+  .win .log .ok { color: #9ece6a; }
+  .win .log .warn { color: #e0af68; }
+  .stage canvas#hero { position: absolute; bottom: 0; left: 0; }
+  .stage .taskbar { height: 44px; background: var(--task); border-top: 1px solid #ffffff10; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .taskbar span { width: 26px; height: 26px; border-radius: 7px; background: #ffffff12; }
+  .taskbar span.on { background: #ffffff20; box-shadow: inset 0 -2px 0 var(--clay); }
+  .taskbar .clock { position: absolute; right: 16px; font: .72rem "DM Mono", monospace; color: #a8a4b8; width: auto; height: auto; background: none; }
+  .modes { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; padding: 14px; background: var(--card); border-top: 1px solid var(--line); }
+  .modes button { font: 500 .88rem "DM Sans", sans-serif; border: 1px solid var(--line); background: var(--bg); color: var(--muted); padding: 8px 14px; border-radius: 999px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+  .modes button i { width: 8px; height: 8px; border-radius: 2px; background: var(--c); }
+  .modes button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .modes button:focus-visible { outline: 2px solid var(--clay); outline-offset: 2px; }
+  @media (max-width: 640px) { .stage .win { width: 78%; left: 11%; } .stage .sky { height: 280px; } }
+
+  section { padding-block: 84px; }
+  .head { display: grid; gap: 14px; margin-bottom: 40px; max-width: 640px; }
+
+  /* states */
+  .states { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .states { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .states { grid-template-columns: 1fr; } }
+  .state { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; }
+  .state .pad { background: var(--screen); display: grid; place-items: center; height: 150px; }
+  .state .txt { padding: 16px 18px 20px; display: grid; gap: 6px; }
+  .state h3 { font: 700 1.15rem "Pixelify Sans", monospace; display: flex; align-items: center; gap: 8px; }
+  .state h3 i { width: 10px; height: 10px; border-radius: 3px; background: var(--c); }
+  .state p { margin: 0; color: var(--muted); font-size: .95rem; }
+  .state .when { font: .74rem "DM Mono", monospace; color: var(--muted); opacity: .8; }
+
+  /* only when claude is open */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+  @media (max-width: 860px) { .split { grid-template-columns: 1fr; gap: 28px; } }
+  .rules { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+  .rules li { display: grid; grid-template-columns: 44px 1fr; gap: 14px; align-items: start; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .rules .ic { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; background: var(--clay-soft); color: var(--clay-ink); }
+  .rules .ic.off { background: var(--bg2); color: var(--muted); }
+  .rules svg { width: 22px; height: 22px; }
+  .rules b { display: block; }
+  .rules span { color: var(--muted); font-size: .94rem; }
+  .timeline { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; display: grid; gap: 12px; }
+  .tl-row { display: grid; grid-template-columns: 120px 1fr; gap: 14px; align-items: center; font-size: .9rem; }
+  .tl-row .lab { color: var(--muted); font: .8rem "DM Mono", monospace; }
+  .tl-bar { height: 30px; border-radius: 8px; background: var(--bg2); position: relative; overflow: hidden; }
+  .tl-bar i { position: absolute; top: 0; bottom: 0; border-radius: 8px; background: var(--clay); opacity: .9; }
+  .tl-bar i.g { background: #7a9cf0; }
+  .tl-bar i.ghost { background: repeating-linear-gradient(45deg, var(--line) 0 6px, transparent 6px 12px); opacity: 1; }
+  .tl-axis { display: grid; grid-template-columns: 120px 1fr; gap: 14px; }
+  .tl-axis div { display: flex; justify-content: space-between; font: .72rem "DM Mono", monospace; color: var(--muted); }
+  .tl-note { font-size: .85rem; color: var(--muted); margin: 4px 0 0; }
+
+  /* outfits */
+  .closet { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  @media (max-width: 760px) { .closet { grid-template-columns: repeat(3, 1fr); } }
+  .fit { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 8px 12px; display: grid; justify-items: center; gap: 8px; cursor: pointer; font: inherit; color: inherit; }
+  .fit:hover, .fit[aria-pressed="true"] { border-color: var(--clay); }
+  .fit[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--clay); }
+  .fit canvas { width: 100%; max-width: 120px; height: auto; aspect-ratio: 4 / 3; }
+  .fit { min-width: 0; }
+  .fit span { font: .82rem "DM Mono", monospace; color: var(--muted); }
+  .extras { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 10px 24px; color: var(--muted); font-size: .95rem; }
+  .extras b { color: var(--ink); font-weight: 500; }
+
+  /* install */
+  .install { background: var(--bg2); border-block: 1px solid var(--line); }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: s; }
+  @media (max-width: 820px) { .steps { grid-template-columns: 1fr; } }
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; display: grid; gap: 8px; align-content: start; }
+  .step::before { counter-increment: s; content: counter(s); font: 700 1.1rem "Pixelify Sans", monospace; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--clay); color: #fff; }
+  .step h3 { font: 700 1.1rem "DM Sans", sans-serif; }
+  .step p { margin: 0; color: var(--muted); font-size: .95rem; }
+  .alt { margin-top: 28px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; display: grid; gap: 10px; }
+  .alt p { margin: 0; color: var(--muted); font-size: .95rem; }
+  .code { background: var(--screen); color: var(--screen-ink); border-radius: 10px; padding: 12px 14px; font: .86rem/1.7 "DM Mono", monospace; overflow-x: auto; position: relative; }
+  .code .c { color: #8a86a0; }
+  .copy { position: absolute; top: 8px; right: 8px; font: .75rem "DM Mono", monospace; background: #ffffff14; border: 1px solid #ffffff1f; color: var(--screen-ink); border-radius: 7px; padding: 4px 9px; cursor: pointer; }
+
+  /* faq */
+  .faq { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 40px; }
+  @media (max-width: 760px) { .faq { grid-template-columns: 1fr; } }
+  .faq div { border-top: 1px solid var(--line); padding-top: 16px; }
+  .faq h3 { font: 700 1.02rem "DM Sans", sans-serif; margin-bottom: 6px; }
+  .faq p { margin: 0; color: var(--muted); font-size: .96rem; }
+
+  .final { text-align: center; padding-block: 90px 70px; }
+  .final canvas { margin: 0 auto 18px; }
+  .final h2 { margin-bottom: 14px; }
+  .final .lede { margin: 0 auto 28px; }
+  footer { border-top: 1px solid var(--line); padding-block: 28px 40px; color: var(--muted); font-size: .88rem; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between; }
+  footer a { color: var(--muted); }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .btn { transition: none; } }
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <div class="wrap">
+    <a class="brand" href="#"><canvas id="logo" width="60" height="40" aria-hidden="true"></canvas>Claude Pet</a>
+    <div class="links">
+      <a class="hide-sm" href="#states">What he does</a>
+      <a class="hide-sm" href="#install">Install</a>
+      <a href="https://github.com/drewguitarist18-lang/claude-pet">GitHub</a>
+      <a class="btn primary sm dl" href="https://github.com/drewguitarist18-lang/claude-pet/releases/latest/download/ClaudePetSetup.exe">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero wrap">
+  <div class="eyebrow">For Claude Code · Windows</div>
+  <h1>A tiny friend who <em>works</em> when Claude does.</h1>
+  <p class="lede">Clawd lives on your desktop while Claude is open. He types when Claude is busy, waves when it needs you and throws confetti when the job's done. Leave Claude working and glance over now and then.</p>
+  <div class="cta">
+    <a class="btn primary dl" href="https://github.com/drewguitarist18-lang/claude-pet/releases/latest/download/ClaudePetSetup.exe">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
+      Download for Windows</a>
+    <a class="btn" href="https://github.com/drewguitarist18-lang/claude-pet">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 00-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 015.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0012 .5z"/></svg>
+      View the code</a>
+  </div>
+  <div class="fine"><span>Free</span><span>Open source (MIT)</span><span>Windows 10 and 11</span><span>10 MB</span></div>
+
+  <div class="stage" aria-label="Clawd on a desktop, showing what Claude Code is doing">
+    <div class="sky">
+      <div class="win" aria-hidden="true">
+        <div class="bar"><i></i><i></i><i></i><b>Claude Code</b></div>
+        <div class="log" id="log"></div>
+      </div>
+      <canvas id="hero" width="940" height="150"></canvas>
+    </div>
+    <div class="taskbar" aria-hidden="true"><span></span><span class="on"></span><span></span><span></span><span class="clock" id="clock">9:41</span></div>
+    <div class="modes" role="group" aria-label="Show a state">
+      <button data-mode="idle" style="--c:#b8b3c6" aria-pressed="false"><i></i>Wandering</button>
+      <button data-mode="working" style="--c:#7dcfff" aria-pressed="true"><i></i>Working</button>
+      <button data-mode="waiting" style="--c:#f7768e" aria-pressed="false"><i></i>Needs you</button>
+      <button data-mode="celebrate" style="--c:#9ece6a" aria-pressed="false"><i></i>All done</button>
+      <button data-mode="tired" style="--c:#e0af68" aria-pressed="false"><i></i>Context full</button>
+      <button data-mode="sleeping" style="--c:#7a7f99" aria-pressed="false"><i></i>Asleep</button>
+    </div>
+  </div>
+</header>
+
+<section id="states">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">What he does</div>
+      <h2>See what Claude is doing at a glance.</h2>
+      <p class="lede">Clawd reads Claude Code's hook events: each tool it runs, each time it stops, each time it needs an answer. You don't need to keep the terminal on screen.</p>
+    </div>
+    <div class="states">
+      <article class="state"><div class="pad"><canvas data-demo="working" width="200" height="130"></canvas></div>
+        <div class="txt"><h3 style="--c:#7dcfff"><i></i>Working</h3><p>Types on his laptop. The bubble shows the current action, like "Editing app.py".</p><span class="when">PreToolUse · UserPromptSubmit</span></div></article>
+      <article class="state"><div class="pad"><canvas data-demo="waiting" width="200" height="130"></canvas></div>
+        <div class="txt"><h3 style="--c:#f7768e"><i></i>Needs you</h3><p>Waves both arms and plays a soft chime when Claude wants a permission or an answer.</p><span class="when">Notification</span></div></article>
+      <article class="state"><div class="pad"><canvas data-demo="celebrate" width="200" height="130"></canvas></div>
+        <div class="txt"><h3 style="--c:#9ece6a"><i></i>All done</h3><p>Jumps in a shower of confetti when a task that took 30 seconds or longer finishes.</p><span class="when">Stop</span></div></article>
+      <article class="state"><div class="pad"><canvas data-demo="tired" width="200" height="130"></canvas></div>
+        <div class="txt"><h3 style="--c:#e0af68"><i></i>Getting tired</h3><p>Gets sleepier as the context window fills: heavy eyes at 50%, yawns at 75%, sweats at 90%.</p><span class="when">Context fill</span></div></article>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <div>
+      <div class="head" style="margin-bottom:28px">
+        <div class="eyebrow">Polite by design</div>
+        <h2>Only there while Claude is.</h2>
+        <p class="lede">Clawd shows up when Claude does and goes away when you're done, so he never sits on your desktop for no reason.</p>
+      </div>
+      <ul class="rules">
+        <li><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/></svg></div>
+          <div><b>Opens with Claude</b><span>He appears when you start the Claude app or Claude Code in a terminal.</span></div></li>
+        <li><div class="ic off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h16M7 18h10"/><path d="M12 3v7m0 0l-3-3m3 3l3-3"/></svg></div>
+          <div><b>Hides with the window</b><span>Close Claude to the tray and he tucks himself away until it comes back.</span></div></li>
+        <li><div class="ic off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg></div>
+          <div><b>Ignores background agents</b><span>Scripts running <span class="mono">claude -p</span> or the Agent SDK don't wake him.</span></div></li>
+        <li><div class="ic off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></div>
+          <div><b>Leaves when you do</b><span>When the last Claude session closes, he quits on his own.</span></div></li>
+      </ul>
+    </div>
+    <div class="timeline" aria-label="Example day: Clawd is visible only while Claude is open">
+      <div class="eyebrow" style="margin-bottom:6px">A typical afternoon</div>
+      <div class="tl-row"><span class="lab">Claude app</span><div class="tl-bar"><i style="left:8%;width:34%"></i><i style="left:58%;width:30%"></i></div></div>
+      <div class="tl-row"><span class="lab">claude -p job</span><div class="tl-bar"><i class="g" style="left:44%;width:12%"></i></div></div>
+      <div class="tl-row"><span class="lab">Clawd shown</span><div class="tl-bar"><i style="left:8%;width:34%"></i><i class="ghost" style="left:44%;width:12%"></i><i style="left:58%;width:30%"></i></div></div>
+      <div class="tl-axis"><span></span><div><span>1 pm</span><span>2 pm</span><span>3 pm</span><span>4 pm</span><span>5 pm</span></div></div>
+      <p class="tl-note">The striped part is the background job: Clawd stays hidden while it runs.</p>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:20px">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">Right-click him</div>
+      <h2>Dress him up.</h2>
+      <p class="lede">Right-click Clawd to pick an outfit, turn the chime on or off, hide the energy bar or quit. Drag him onto any window ledge and he'll walk along it.</p>
+    </div>
+    <div class="closet" role="group" aria-label="Outfits">
+      <button class="fit" data-fit="none" aria-pressed="true"><canvas width="120" height="90"></canvas><span>None</span></button>
+      <button class="fit" data-fit="party hat" aria-pressed="false"><canvas width="120" height="90"></canvas><span>Party hat</span></button>
+      <button class="fit" data-fit="cap" aria-pressed="false"><canvas width="120" height="90"></canvas><span>Cap</span></button>
+      <button class="fit" data-fit="crown" aria-pressed="false"><canvas width="120" height="90"></canvas><span>Crown</span></button>
+      <button class="fit" data-fit="glasses" aria-pressed="false"><canvas width="120" height="90"></canvas><span>Glasses</span></button>
+      <button class="fit" data-fit="bow tie" aria-pressed="false"><canvas width="120" height="90"></canvas><span>Bow tie</span></button>
+    </div>
+    <div class="extras"><span><b>Energy bar</b> under his feet</span><span><b>Chime</b> when he needs you</span><span><b>Ledges:</b> he walks along wherever you drop him</span></div>
+  </div>
+</section>
+
+<section class="install" id="install">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">Install</div>
+      <h2>About a minute, start to finish.</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><h3>Download the installer</h3><p><a class="dl" href="https://github.com/drewguitarist18-lang/claude-pet/releases/latest/download/ClaudePetSetup.exe">ClaudePetSetup.exe</a>. You don't need Python or any admin rights.</p></div>
+      <div class="step"><h3>Run it</h3><p>It installs Clawd for your user and adds his hooks to Claude Code. If Windows SmartScreen warns you, click <b>More info</b>, then <b>Run anyway</b>.</p></div>
+      <div class="step"><h3>Open Claude</h3><p>Start the Claude app or <span class="mono">claude</span> in a terminal and send a message. Clawd walks onto your screen.</p></div>
+    </div>
+    <div class="alt">
+      <b>Already have Python? Install it as a Claude Code plugin</b>
+      <p>Run these inside Claude Code. The plugin runs from source, so you'll need Python 3 on your PATH.</p>
+      <div class="code"><button class="copy" data-copy="/plugin marketplace add drewguitarist18-lang/claude-pet&#10;/plugin install claude-pet@claude-pet">Copy</button>/plugin marketplace add drewguitarist18-lang/claude-pet<br>/plugin install claude-pet@claude-pet</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="head"><div class="eyebrow">Questions</div><h2>Good to know.</h2></div>
+    <div class="faq">
+      <div><h3>Does it send anything anywhere?</h3><p>No. Clawd reads the hook events Claude Code passes him on your computer and keeps a few small files in <span class="mono">~/.claude-pet</span>. He makes no network requests.</p></div>
+      <div><h3>Does it slow Claude down?</h3><p>Barely. Each hook takes a fraction of a second, and Clawd runs as his own small process.</p></div>
+      <div><h3>Mac or Linux?</h3><p>Windows only for now. The pet uses Windows APIs to tell when the Claude window is open.</p></div>
+      <div><h3>How do I remove it?</h3><p>Uninstall it from Windows <b>Settings → Apps</b>. That also takes his hooks back out of Claude Code's settings.</p></div>
+      <div><h3>Can I change his context window size?</h3><p>He assumes 200k tokens and switches to 1M on his own when a session goes past that. To set a size yourself, add <span class="mono">"context_window"</span> to <span class="mono">~/.claude-pet/config.json</span>.</p></div>
+      <div><h3>Is this made by Anthropic?</h3><p>No. It's an independent, open-source fan project built for Claude Code users.</p></div>
+    </div>
+  </div>
+</section>
+
+<div class="final wrap">
+  <canvas id="wave" width="200" height="130" aria-hidden="true"></canvas>
+  <h2>Give Claude a little company.</h2>
+  <p class="lede">Free, open source and about a minute to set up.</p>
+  <div class="cta"><a class="btn primary dl" href="https://github.com/drewguitarist18-lang/claude-pet/releases/latest/download/ClaudePetSetup.exe">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>Download for Windows</a></div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Claude Pet · MIT licensed · <a href="https://github.com/drewguitarist18-lang/claude-pet">GitHub</a> · <a href="https://github.com/drewguitarist18-lang/claude-pet/issues">Report a bug</a></span>
+    <span>Not affiliated with or endorsed by Anthropic. Claude is a trademark of Anthropic.</span>
+  </div>
+</footer>
+
+<script>
+// Clawd, drawn the same way the desktop pet draws him (pet.py): a 12x8 pixel grid.
+const BODY = "#D97757", EYE = "#000", INK = "#1a1b26";
+const CONFETTI = ["#f7768e", "#e0af68", "#9ece6a", "#7dcfff", "#bb9af7"];
+const DETAILS = ["Reading app.py", "Editing app.py", "Running npm test", "Searching files", "Writing README.md"];
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function clawd(ctx, o) {
+  // o: {x, ground, cell, t, state, walking, dir, outfit, bubble, energy}
+  const C = o.cell, t = o.t, st = o.state, ox = o.x - 6 * C;
+  const px = (col, row, oy, color = BODY, w = 1, h = 1) => { ctx.fillStyle = color; ctx.fillRect(ox + col * C, oy + row * C, w * C, h * C); };
+  let bob = 0;
+  if (o.walking) bob = Math.floor(t * 6) % 2 ? 1 : 0;
+  else if (st === "waiting") bob = Math.round(Math.abs(Math.sin(t * 4)) * 3);
+  else if (st === "celebrate") bob = Math.round(Math.abs(Math.sin(t * 7)) * 14);
+  else if (st === "sleeping") bob = Math.sin(t * 1.2) > .4 ? 1 : 0;
+  bob *= C / 5;
+  const oy = o.ground - 8 * C - bob, working = st === "working";
+  const tired = st === "tired" ? 3 : 0;
+  if (st === "celebrate") for (let i = 0; i < 16; i++) {
+    const ph = (t * 1.1 + i * .37) % 1, x = o.x + (i - 8) * 2.2 * C + Math.sin(t * 3 + i) * 6, y = 4 + ph * (o.ground - 4);
+    ctx.fillStyle = CONFETTI[i % 5]; ctx.fillRect(x - 2, y - 2, 4, 4);
+  }
+  px(2, 0, oy, BODY, 8, 6);
+  if (working) { const f = Math.floor(t * 8) % 2 ? .5 : 0; px(0, 3.4 + f, oy, BODY, 3, 1.4); px(9, 3.9 - f, oy, BODY, 3, 1.4); }
+  else { const up = st === "celebrate" || (st === "waiting" && Math.floor(t * 4) % 2 === 0); px(0, up ? 1 : 2, oy, BODY, 12, 2); }
+  const step = Math.floor(t * 6) % 2;
+  [2, 4, 7, 9].forEach((col, i) => { const drop = o.walking && i % 2 === step ? 1 : 0; px(col, 6, oy, BODY, 1, 2 - drop); });
+  const blink = st === "idle" && !o.walking && (t % 4.5) < .15;
+  const yawn = tired && (t % 6) < 1.4;
+  const shift = o.walking ? (o.dir > 0 ? 1 : -1) * (C / 5) : 0;
+  const lid = [0, 1, 2.5, 3.8][tired] * C / 5;
+  for (const col of [3, 8]) {
+    const x0 = ox + col * C + shift, y0 = oy + C;
+    if (st === "sleeping" || blink || yawn) px(col, 1.3, oy, EYE, 1, .4);
+    else if (st === "celebrate") { ctx.strokeStyle = EYE; ctx.lineWidth = Math.max(2, C / 2.5); ctx.beginPath(); ctx.moveTo(x0, y0 + C); ctx.lineTo(x0 + C / 2, y0); ctx.lineTo(x0 + C, y0 + C); ctx.stroke(); }
+    else { ctx.fillStyle = EYE; ctx.fillRect(x0, y0, C, C); if (lid) { ctx.fillStyle = BODY; ctx.fillRect(x0 - 1, y0 - 1, C + 2, lid + 1); } }
+  }
+  if (yawn) px(5, 3, oy, EYE, 2, 1.2);
+  if (tired) { const dx = ox + 9.5 * C + Math.sin(t * 2) * 1.5; ctx.fillStyle = "#7dcfff"; ctx.beginPath(); ctx.moveTo(dx, oy - 1.6 * C); ctx.lineTo(dx - .6 * C, oy - .4 * C); ctx.lineTo(dx + .6 * C, oy - .4 * C); ctx.fill(); }
+  outfit(ctx, o.outfit, px, oy, ox, C);
+  if (working) {
+    px(1.6, 2.3, oy, "#3b3b44", 8.8, 3.5); px(2, 2.7, oy, "#1f2430", 8, 2.7);
+    for (let i = 0; i < 3; i++) px(2.4, 3 + i * .8, oy, ["#9ece6a", "#7dcfff", "#e0af68"][(Math.floor(t * 3) + i) % 3], 2 + ((Math.floor(t * 3) + i * 3) % 5), .4);
+    px(1, 5.8, oy, "#8a8a92", 10, .7);
+  }
+  if (o.bubble !== false) {
+    if (working) bubble(ctx, o.x, oy, C, o.bubble || "Working…", BODY);
+    else if (st === "waiting") bubble(ctx, o.x, oy, C, "Needs you!", "#f7768e");
+    else if (st === "celebrate") bubble(ctx, o.x, oy, C, "All done!", "#9ece6a");
+    else if (st === "tired") bubble(ctx, o.x, oy, C, "Context 92% full", "#e0af68");
+  }
+  if (st === "sleeping") for (let i = 0; i < 3; i++) {
+    const ph = (t * .45 + i / 3) % 1; ctx.fillStyle = "#7a7f99"; ctx.font = `700 ${Math.round((8 + ph * 6) * C / 5)}px "DM Sans", sans-serif`;
+    ctx.fillText("z", o.x + 4.8 * C + ph * 3.2 * C, oy - .4 * C - ph * 5.2 * C);
+  }
+  if (o.energy != null) {
+    const w = 8 * C, l = o.x - w / 2, top = o.ground + 2, e = o.energy;
+    ctx.fillStyle = "#232433"; ctx.fillRect(l - 1, top - 1, w + 2, 4);
+    ctx.fillStyle = e > .5 ? "#9ece6a" : e > .25 ? "#e0af68" : "#f7768e"; ctx.fillRect(l, top, w * e, 2);
+  }
+}
+
+function outfit(ctx, fit, px, oy, ox, C) {
+  if (fit === "party hat") { px(4.5, -1, oy, "#bb9af7", 3); px(5.25, -2, oy, "#bb9af7", 1.5); px(5.5, -3, oy, "#f7768e", 1); }
+  else if (fit === "cap") { px(2.5, -1.4, oy, "#7aa2f7", 7, 1.4); px(8.5, -.4, oy, "#5a7fd0", 3, .6); }
+  else if (fit === "crown") { px(2.5, -1, oy, "#e0af68", 7); for (const c of [2.5, 5.5, 8.5]) px(c, -2, oy, "#e0af68"); px(5.5, -.6, oy, "#f7768e", 1, .5); }
+  else if (fit === "glasses") {
+    ctx.strokeStyle = INK; ctx.lineWidth = Math.max(2, C / 2.5);
+    for (const col of [3, 8]) ctx.strokeRect(ox + col * C - .6 * C, oy + C - .6 * C, C * 2.2, C * 2.2);
+    ctx.beginPath(); ctx.moveTo(ox + 4.6 * C, oy + 1.5 * C); ctx.lineTo(ox + 7.4 * C, oy + 1.5 * C); ctx.stroke();
+  } else if (fit === "bow tie") {
+    const cx = ox + 6 * C, ty = oy + 5.2 * C, s = C / 5;
+    ctx.fillStyle = "#f7768e"; ctx.strokeStyle = INK; ctx.lineWidth = 1;
+    for (const d of [-1, 1]) { ctx.beginPath(); ctx.moveTo(cx + d * 14 * s, ty - 6 * s); ctx.lineTo(cx + d * 14 * s, ty + 6 * s); ctx.lineTo(cx, ty); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle = "#d4382c"; ctx.fillRect(cx - 3 * s, ty - 3 * s, 6 * s, 6 * s);
+  }
+}
+
+function bubble(ctx, cx, oy, C, text, accent) {
+  const fs = Math.round(C * 1.9);
+  ctx.font = `700 ${fs}px "DM Mono", Consolas, monospace`;
+  const w = ctx.measureText(text).width, h = fs * 1.15;
+  const cy = Math.max(h / 2 + 10, oy - 3.6 * C - 8);
+  const l = cx - w / 2 - 10, r = cx + w / 2 + 10, t = cy - h / 2 - 5, b = cy + h / 2 + 5, n = 3;
+  const notched = (l, t, r, b, fill) => { ctx.fillStyle = fill; ctx.beginPath();
+    [[l + n, t], [r - n, t], [r - n, t + n], [r, t + n], [r, b - n], [r - n, b - n], [r - n, b], [l + n, b], [l + n, b - n], [l, b - n], [l, t + n], [l + n, t + n]].forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.fill(); };
+  notched(l - 2, t - 2, r + 2, b + 2, accent);
+  ctx.fillRect(cx - 6, b, 12, 4); ctx.fillRect(cx - 4, b + 4, 8, 3); ctx.fillRect(cx - 2, b + 7, 4, 2);
+  notched(l, t, r, b, "#232433");
+  ctx.fillRect(cx - 4, b - 1, 8, 4); ctx.fillRect(cx - 2, b + 3, 4, 2);
+  ctx.fillStyle = "#e8e6f0"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(text, cx, cy + 1);
+  ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+}
+
+// ---- the hero desktop
+const hero = document.getElementById("hero"), hctx = hero.getContext("2d");
+const LOGS = {
+  idle: [["u", "> nothing to do right now"]],
+  working: [["u", "> add a dark mode toggle"], ["t", "● Read src/theme.ts"], ["t", "● Edit src/App.tsx"], ["t", "● Bash npm test"]],
+  waiting: [["u", "> deploy the site"], ["warn", "? Allow Bash: npx vercel deploy --prod"], ["", "  1. Yes   2. No"]],
+  celebrate: [["u", "> fix the failing tests"], ["t", "● Edit tests/api.test.ts"], ["ok", "✓ 42 passed in 3.1s"], ["", "All tests pass now."]],
+  tired: [["", "...a long session later"], ["warn", "Context 92% full · consider /compact"]],
+  sleeping: [["", "(no activity for 5 minutes)"]],
+};
+let mode = "working", hx = 600, dir = -1, walking = false, phaseUntil = 0, detail = 0, t0 = performance.now();
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll(".modes button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === m));
+  document.getElementById("log").innerHTML = LOGS[m].map(([c, s]) => `<div class="${c}">${s.replace(/</g, "&lt;")}</div>`).join("");
+}
+document.querySelectorAll(".modes button").forEach((b) => b.onclick = () => setMode(b.dataset.mode));
+setMode("working");
+
+function fit(canvas) {
+  const r = canvas.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1);
+  const w = Math.round(r.width * d), h = Math.round(r.height * d);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  return d;
+}
+hero.style.width = "100%"; hero.style.height = "150px";
+
+// ---- small demos
+const demos = [...document.querySelectorAll("canvas[data-demo]")];
+const fits = [...document.querySelectorAll(".fit")];
+let outfitPick = "none";
+fits.forEach((b) => b.onclick = () => { outfitPick = b.dataset.fit; fits.forEach((x) => x.setAttribute("aria-pressed", x === b)); });
+const logo = document.getElementById("logo"), wave = document.getElementById("wave");
+const visible = new Set();
+const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting ? visible.add(e.target) : visible.delete(e.target)));
+[hero, ...demos, ...fits.map((b) => b.querySelector("canvas")), wave].forEach((c) => io.observe(c));
+
+function frame(now) {
+  const t = reduce ? 1.2 : (now - t0) / 1000;
+  // hero
+  if (visible.has(hero)) {
+    const d = fit(hero), W = hero.width / d, H = hero.height / d;
+    hctx.setTransform(d, 0, 0, d, 0, 0); hctx.clearRect(0, 0, W, H);
+    const C = W < 560 ? 5 : 6;
+    let st = mode, walk = false;
+    if (mode === "idle" && !reduce) {
+      if (t > phaseUntil) { walking = !walking; phaseUntil = t + (walking ? 2 + Math.random() * 3 : 1.5 + Math.random() * 3); if (walking && Math.random() < .4) dir *= -1; }
+      if (walking) { hx += dir * 1.5; if (hx < 6 * C + 10) { hx = 6 * C + 10; dir = 1; } if (hx > W - 6 * C - 10) { hx = W - 6 * C - 10; dir = -1; } walk = true; }
+    }
+    const edge = mode === "idle" || mode === "sleeping" ? 6 * C + 10 : 112;   // room for his speech bubble
+    hx = Math.min(Math.max(hx, edge), W - edge);
+    if (mode === "working") detail = Math.floor(t / 2.2) % DETAILS.length;
+    clawd(hctx, { x: hx, ground: H - 8, cell: C, t, state: st, walking: walk, dir, outfit: outfitPick, bubble: DETAILS[detail], energy: mode === "tired" ? .08 : .72 });
+  }
+  for (const c of demos) if (visible.has(c)) {
+    const d = fit(c), W = c.width / d, H = c.height / d, x = c.getContext("2d");
+    x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, W, H);
+    clawd(x, { x: W / 2, ground: H - 12, cell: 5, t, state: c.dataset.demo, walking: false, dir: 1, outfit: "none", bubble: c.dataset.demo === "working" ? "Editing app.py" : undefined, energy: c.dataset.demo === "tired" ? .08 : .7 });
+  }
+  for (const b of fits) { const c = b.querySelector("canvas"); if (!visible.has(c)) continue;
+    const d = fit(c), W = c.width / d, H = c.height / d, x = c.getContext("2d");
+    x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, W, H);
+    clawd(x, { x: W / 2, ground: H - 8, cell: 5, t: b.dataset.fit === outfitPick ? t : 1.2, state: "idle", walking: false, dir: 1, outfit: b.dataset.fit, bubble: false });
+  }
+  if (visible.has(wave)) { const d = fit(wave), W = wave.width / d, H = wave.height / d, x = wave.getContext("2d");
+    x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, W, H);
+    clawd(x, { x: W / 2, ground: H - 8, cell: 6, t, state: "waiting", walking: false, dir: 1, outfit: "party hat", bubble: false }); }
+  { const d = fit(logo), x = logo.getContext("2d"); x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, 30, 20);
+    clawd(x, { x: 15, ground: 19, cell: 2.2, t, state: "idle", walking: false, dir: 1, outfit: "none", bubble: false }); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// clock, sticky nav border, copy buttons
+const clock = document.getElementById("clock");
+const tick = () => clock.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+tick(); setInterval(tick, 30000);
+const nav = document.getElementById("nav");
+addEventListener("scroll", () => nav.classList.toggle("scrolled", scrollY > 8), { passive: true });
+document.querySelectorAll(".copy").forEach((b) => b.onclick = async () => {
+  try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied"; }
+  catch { const r = document.createRange(); r.selectNodeContents(b.parentElement); getSelection().removeAllRanges(); getSelection().addRange(r); b.textContent = "Selected"; }
+  setTimeout(() => b.textContent = "Copy", 1600);
+});
+</script>
+</body>
+</html>

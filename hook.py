@@ -1,14 +1,15 @@
-"""Claude Code hook for the status pet and the Claude Office.
+"""Claude Code hook for Clawd, the status pet.
 
 Usage (from a hook): python hook.py <Event>
 Events: SessionStart UserPromptSubmit PreToolUse PostToolUse Notification
         Stop SubagentStart SubagentStop SessionEnd
 
 - Keeps one entry per open session in ~/.claude-pet/sessions.json (status,
-  current tool, context fill, project, subagents) for the office view.
+  current tool, context fill, project, subagents). Lithnode's Office reads it too.
 - Mirrors the latest status/detail/context into small files for the pet.
 - Plays a sound when Claude needs you (toggle in the pet's right-click menu).
-- Launches the pet if it isn't running.
+- Launches the pet if it isn't running, unless the session is a background
+  agent (claude -p, the Agent SDK, Lithnode's agents): those never bring him up.
 """
 import json
 import os
@@ -46,34 +47,6 @@ def age(path):
 
 # ---------------------------------------------------------------- processes
 
-def process_table():
-    """pid -> (parent pid, exe name) for every running process."""
-    import ctypes
-    from ctypes import wintypes
-
-    class ENTRY(ctypes.Structure):
-        _fields_ = [
-            ("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
-            ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_size_t),
-            ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
-            ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long),
-            ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260),
-        ]
-
-    k32 = ctypes.windll.kernel32
-    k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-    snap = k32.CreateToolhelp32Snapshot(2, 0)  # TH32CS_SNAPPROCESS
-    table = {}
-    entry = ENTRY()
-    entry.dwSize = ctypes.sizeof(ENTRY)
-    ok = k32.Process32FirstW(snap, ctypes.byref(entry))
-    while ok:
-        table[entry.th32ProcessID] = (entry.th32ParentProcessID, entry.szExeFile.lower())
-        ok = k32.Process32NextW(snap, ctypes.byref(entry))
-    k32.CloseHandle(snap)
-    return table
-
-
 def claude_ancestor_pids():
     """(session pid, desktop app pid) for the nearest claude.exe ancestor.
 
@@ -81,7 +54,7 @@ def claude_ancestor_pids():
     desktop app's main process, which owns the window); None for a plain CLI.
     """
     try:
-        table = process_table()
+        table = shared.process_table()
     except Exception:
         return None, None
     pid = os.getpid()
@@ -97,13 +70,22 @@ def claude_ancestor_pids():
     return None, None
 
 
+def headless():
+    """True for sessions nobody is looking at: claude -p, Agent SDK apps, Lithnode's agents.
+    The desktop app runs on the SDK too, but says so with its own entrypoint."""
+    entry = os.environ.get("CLAUDE_CODE_ENTRYPOINT", "")
+    return bool(os.environ.get("LITHNODE_AGENT")) or entry.startswith("sdk")
+
+
 def launch_pet():
     if age(HEARTBEAT) < 5 or age(LAUNCHING) < 10:
         return
     LAUNCHING.write_text(str(time.time()))
     exe = Path(sys.executable)
-    if getattr(sys, "frozen", False):   # bundled in the Lithnode app: its windowless engine runs the pet
-        command = [str(exe.with_name("lithnode-server.exe")), "pet"]
+    if getattr(sys, "frozen", False):
+        # the Claude Pet app ships ClaudePet.exe; inside the Lithnode app its windowless engine runs the pet
+        own = exe.with_name("ClaudePet.exe")
+        command = [str(own)] if own.exists() else [str(exe.with_name("lithnode-server.exe")), "pet"]
     else:
         pythonw = exe.with_name("pythonw.exe")
         command = [str(pythonw if pythonw.exists() else exe), str(PET)]
@@ -272,7 +254,7 @@ def main():
         else:
             entry = sessions.setdefault(session_id, {})
             entry.setdefault("started", now)
-            entry.update(ts=now, pid=pid, app=app)
+            entry.update(ts=now, pid=pid, app=app, headless=headless())
             cwd = payload.get("cwd")
             if cwd:
                 entry["cwd"], entry["project"] = cwd, Path(cwd).name or cwd
@@ -287,6 +269,8 @@ def main():
     DETAIL.write_text(detail)
     if "tokens" in entry:
         CONTEXT.write_text(json.dumps({"tokens": entry["tokens"], "window": entry["window"]}))
+    if entry.get("headless"):
+        return
     if event == "Notification" and sound_enabled():
         beep()
     launch_pet()

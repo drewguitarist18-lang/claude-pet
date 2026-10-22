@@ -1,5 +1,5 @@
 {
-  "description": "Clawd status pet and Claude Office",
+  "description": "Clawd status pet",
   "hooks": {
     "SessionStart": [
       {
