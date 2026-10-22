@@ -30,13 +30,18 @@ CloseApplications=force
 [Files]
 Source: "..\dist\ClaudePet\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
+[Registry]
+; "Always on screen" (his default) starts him at sign-in; the menu switch adds or removes this value
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Claude Pet"; ValueData: """{app}\ClaudePet.exe"""; Flags: uninsdeletevalue
+
 [Run]
 Filename: "{app}\claude-pet-cli.exe"; Parameters: "install"; Flags: runhidden; StatusMsg: "Adding Clawd to Claude Code..."
+Filename: "{app}\ClaudePet.exe"; Flags: nowait
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM ClaudePet.exe"; Flags: runhidden; RunOnceId: "StopPet"
 Filename: "{app}\claude-pet-cli.exe"; Parameters: "uninstall"; Flags: runhidden; RunOnceId: "RemoveHooks"
 
 [Messages]
-WelcomeLabel2=Clawd is a little pixel pet who lives on your desktop while Claude is open. He types when Claude works, waves when Claude needs you and celebrates when a task is done.%n%nThis adds a few hooks to Claude Code. Nothing leaves your computer.
-FinishedLabel=Clawd is installed. Open Claude or start Claude Code and he'll show up.
+WelcomeLabel2=Clawd is a little pixel pet who lives on your desktop. Click him to jump to Claude. He types when Claude works, waves when Claude needs you and celebrates when a task is done.%n%nThis adds a few hooks to Claude Code. Nothing leaves your computer.
+FinishedLabel=Clawd is installed and on your desktop. Click him to jump to Claude.

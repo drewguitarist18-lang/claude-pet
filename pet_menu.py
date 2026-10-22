@@ -214,6 +214,7 @@ class PetMenu:
 
         # switches
         for key, text, value, action in (
+            ("always", "Always on screen", p.cfg["always_on"], p.toggle_always_on),
             ("sound", "Chime when he needs you", p.cfg["sound"], p.toggle_sound),
             ("energy", "Context bar", p.cfg["energy_bar"], p.toggle_energy_bar),
         ):

@@ -1,7 +1,7 @@
 # Claude Pet
 
-Clawd, a small pixel pet who lives on your Windows desktop while Claude is open
-and shows what Claude Code is doing. Site: https://claude-pet-iota.vercel.app
+Clawd, a small pixel pet who lives on your Windows desktop, shows what Claude
+Code is doing, and takes you to Claude in one click. Site: https://claude-pet-iota.vercel.app
 
 ## Download
 
@@ -24,17 +24,18 @@ Settings → Apps; that removes the hooks too.
 **Reactions:** a facepalm when a tool fails, fireworks when Claude runs `git commit` or `git push`.
 Each subagent shows up as a tiny buddy beside him and walks off when it's done.
 
-**Click him** to pet him (hearts). While he's waving "Needs you!", a click brings the Claude window
-that needs you to the front instead.
+**Click him** to jump to Claude: the session that needs you first, else the latest one, or the
+Claude app opens if no window is up. He hops with a few hearts.
 
 **Energy:** he gets tired as the context window fills. Half-lidded at 50%,
 yawning and slower at 75%, sweating with a "Context N% full" bubble at 90%.
 A small context bar under his feet fills up with it.
 
-**Only while Claude is open:** he shows while the Claude desktop app's window
-is open (or minimized) or Claude Code runs in a terminal, hides when the app
-is closed to the tray, and quits when the last session ends. Background
-sessions (`claude -p`, the Agent SDK, Lithnode's agents) never bring him up.
+**Always on screen** (the default): he starts with Windows and stays up, napping
+when nothing's running. Switch it off in his menu and he only shows while the
+Claude desktop app's window is open (or minimized) or Claude Code runs in a
+terminal, and quits when the last session ends. Background sessions
+(`claude -p`, the Agent SDK, Lithnode's agents) never wake him.
 
 **In Lithnode:** while the [Lithnode](https://lithnode.com) app is open, Clawd turns into
 Lithnode's white crab; close Lithnode and he's Clawd again.

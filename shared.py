@@ -63,6 +63,47 @@ def process_names():
     return {name for _, name in process_table().values()}
 
 
+def process_paths(name):
+    """Full exe paths of running processes with this exe name (lowercase)."""
+    k32 = ctypes.windll.kernel32
+    paths = []
+    for pid, (_, exe) in process_table().items():
+        if exe != name:
+            continue
+        handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            continue
+        buf = ctypes.create_unicode_buffer(1024)
+        size = ctypes.c_ulong(1024)
+        if k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+            paths.append(buf.value)
+        k32.CloseHandle(handle)
+    return paths
+
+
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+
+def set_start_with_windows(on):
+    """Start the installed pet at sign-in (HKCU Run), or stop doing that. Source runs are left alone."""
+    import sys
+    import winreg
+    if not getattr(sys, "frozen", False):
+        return
+    exe = os.path.join(os.path.dirname(sys.executable), "ClaudePet.exe")
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            if on:
+                winreg.SetValueEx(key, "Claude Pet", 0, winreg.REG_SZ, f'"{exe}"')
+            else:
+                try:
+                    winreg.DeleteValue(key, "Claude Pet")
+                except FileNotFoundError:
+                    pass
+    except OSError:
+        pass
+
+
 def live_sessions():
     """{session id: entry} for sessions whose claude.exe is still running."""
     try:

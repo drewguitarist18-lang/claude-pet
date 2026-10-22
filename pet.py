@@ -8,16 +8,19 @@ State comes from ~/.claude-pet/status (written by hook.py):
   juice      out of juice: asleep until the usage limit resets (the time is in his bubble)
 
 Reactions: a facepalm when a tool fails, fireworks on a git commit or push. Subagents show up
-as tiny buddies beside him. Click him to pet him, or while he waves, to jump to that Claude window.
+as tiny buddies beside him. Click him to jump to Claude (the session that needs you first), or
+to open the Claude app when no window is up.
 
-He only shows while Claude is open: the Claude desktop app's window (shown or
-minimized) or a terminal running Claude Code. Background agents don't count.
+"Always on screen" (the default) keeps him up all the time and starts him with Windows; switched
+off, he only shows while Claude is open (the desktop app's window, or a terminal running Claude
+Code). Background agents don't count.
 Drag with the left mouse button to put him on any ledge (he patrols that
 height). Right-click for his menu (pet_menu.py): outfits, sound, the context bar, quit.
 """
 import ctypes
 import json
 import math
+import os
 import random
 import struct
 import sys
@@ -88,6 +91,7 @@ def load_config():
         "outfit": outfit if outfit in outfits_now() else "none",
         "sound": bool(cfg.get("sound", True)),
         "energy_bar": bool(cfg.get("energy_bar", True)),
+        "always_on": bool(cfg.get("always_on", True)),
     }
 
 
@@ -193,12 +197,40 @@ def focus_session(session):
             hwnd = find_window(pid)
             if hwnd:
                 break
-    if not hwnd:
-        return False
+    return bool(hwnd) and bring_to_front(hwnd)
+
+
+def bring_to_front(hwnd):
+    """Windows only lets the foreground app hand over focus, and the pet never takes focus, so
+    tap Alt first (the usual way around that lock), then restore and raise the window."""
+    user32 = ctypes.windll.user32
     if user32.IsIconic(hwnd):
         user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    user32.keybd_event(0x12, 0, 0, 0)  # VK_MENU down
+    user32.keybd_event(0x12, 0, 2, 0)  # and up
     user32.SetForegroundWindow(hwnd)
-    return True
+    user32.BringWindowToTop(hwnd)
+    return user32.GetForegroundWindow() == hwnd
+
+
+def open_claude_app():
+    """Start (or wake) the Claude desktop app through its app id; a running copy comes forward.
+    The id comes from a running Claude.exe's package folder, else the Store package's usual one."""
+    family = "Claude_pzs8sxrjxfjjc"
+    try:
+        for proc_path in shared.process_paths("claude.exe"):
+            parts = proc_path.replace("/", "\\").split("\\")
+            if "WindowsApps" in parts:
+                package = parts[parts.index("WindowsApps") + 1]   # Claude_<version>_x64__<hash>
+                family = package.split("_")[0] + "_" + package.rsplit("__", 1)[-1]
+                break
+    except Exception:
+        pass
+    try:
+        os.startfile(f"shell:AppsFolder\\{family}!Claude")
+        return True
+    except OSError:
+        return False
 
 
 def lithnode_open():
@@ -318,6 +350,11 @@ class Pet:
         self.cfg["sound"] = not self.cfg["sound"]
         save_config(self.cfg)
 
+    def toggle_always_on(self):
+        self.cfg["always_on"] = not self.cfg["always_on"]
+        save_config(self.cfg)
+        shared.set_start_with_windows(self.cfg["always_on"])
+
     def toggle_energy_bar(self):
         self.cfg["energy_bar"] = not self.cfg["energy_bar"]
         save_config(self.cfg)
@@ -345,14 +382,13 @@ class Pet:
             self.clicked()
 
     def clicked(self):
-        """While he waves: jump to the Claude window that needs you. Otherwise: pet him."""
+        """Jump to Claude: the session waiting on you, else the latest one, else open the app.
+        He hops with a few hearts either way."""
         now = time.time()
-        if read_state(now) == "waiting":
-            waiting = sorted((s for s in self.sessions if s.get("status") == "waiting"),
-                             key=lambda s: s.get("status_ts", 0), reverse=True)
-            for session in waiting or self.sessions:
-                if focus_session(session):
-                    return
+        order = sorted(self.sessions, key=lambda s: (s.get("status") == "waiting",
+                                                     s.get("status_ts", 0), s.get("ts", 0)), reverse=True)
+        if not any(focus_session(session) for session in order):
+            open_claude_app()
         self.petted = now
         self.hearts = [h for h in self.hearts if now - h[0] < 2]
         self.hearts += [(now + i * 0.22, random.uniform(-24, 24)) for i in range(3)]
@@ -373,7 +409,10 @@ class Pet:
         self.check_limit(now)
         self.check_reaction(now)
         self.update_buddies(now)
-        if self.keep_alive:
+        if self.keep_alive or self.cfg["always_on"]:
+            if not self.shown:
+                self.root.deiconify()
+                self.shown = True
             return True
         any_open, show = pet_visibility(self.sessions)
         if any_open:
