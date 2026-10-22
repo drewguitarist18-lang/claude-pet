@@ -114,6 +114,11 @@ def test_pet(shots):
                                          "subagents": {"a": {"ts": time.time()}, "b": {"ts": time.time()}}}})
     shared.STATUS.write_text("idle")
     p = pet.Pet()
+    start = (int(p.x), int(p.y))
+    backdrop = tk.Toplevel(p.root, bg="#4a7ab0")   # blue behind him: see-through shows blue in the shots
+    backdrop.geometry(f"{p.sw}x{p.root.winfo_screenheight()}+0+0")
+    backdrop.lower()
+    p.root.lift()
     shaped = getattr(p.reshape, "shaped", False)
     print("see-through:", "X11 shape" if shaped else "key color / native", flush=True)
     if os.environ.get("SMOKE_EXPECT_SHAPE"):
@@ -134,10 +139,13 @@ def test_pet(shots):
             p.root.update()
             screenshot(Path(shots) / f"{name}.png")
 
+    where = []
+
     class Click:
         x_root, y_root = 400, 300
 
     steps = [
+        (lambda: where.extend((p.root.winfo_x(), p.root.winfo_y(), p.root.winfo_screenheight())), 0.1),
         (lambda: status("working", "Editing pet.py"), 1.2), (lambda: shot("working"), 0.1),
         (lambda: status("waiting"), 0.8), (lambda: status("celebrate"), 0.8),
         (lambda: react("oops"), 0.8), (lambda: react("push"), 1.0), (lambda: shot("push"), 0.1),
@@ -170,6 +178,8 @@ def test_pet(shots):
     p.run()
     check(time.time() - started < 55, "pet ran the whole script")
     check(p.buddies and len(p.buddies) == 2, "two subagent buddies showed up")
+    check(len(where) == 3 and abs(where[0] - start[0]) < 80 and where[1] > where[2] / 2,
+          f"he sits near the bottom where he was put ({where[:2]} vs {start})")
     for error in errors:
         print(error)
     check(not errors, f"no Tk errors ({len(errors)})")

@@ -24,6 +24,9 @@ else:
     _FONTS, _SCALE = {"ui": "DejaVu Sans", "ui-bold": "DejaVu Sans", "mono": "DejaVu Sans Mono"}, 1.0
 
 
+RIGHT_CLICK = "<Button-2>" if MAC else "<Button-3>"   # Tk on the Mac numbers the right button 2
+
+
 def font(kind, size, *style):
     """A Tk font tuple: kind is "ui", "ui-bold" or "mono", size in Windows points."""
     if kind == "ui-bold" and not WINDOWS:

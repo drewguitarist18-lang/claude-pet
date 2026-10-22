@@ -160,21 +160,22 @@ def pet_visibility(sessions):
 class Pet:
     def __init__(self):
         self.root = tk.Tk()
+        self.canvas = tk.Canvas(
+            self.root, width=W, height=H, bg=TRANSPARENT, highlightthickness=0
+        )
+        self.canvas.pack()
+        # borderless before placing him: on the Mac, turning that on afterwards moves the window
+        self.reshape = desktop.see_through(self.root, self.canvas, TRANSPARENT)
         self.sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
         self.x = float(self.sw - W - 200)
         self.y = float(sh - H - 50)
         self.root.geometry(f"{W}x{H}+{int(self.x)}+{int(self.y)}")
 
-        self.canvas = tk.Canvas(
-            self.root, width=W, height=H, bg=TRANSPARENT, highlightthickness=0
-        )
-        self.canvas.pack()
-        self.reshape = desktop.see_through(self.root, self.canvas, TRANSPARENT)
         self.canvas.bind("<ButtonPress-1>", self.start_drag)
         self.canvas.bind("<B1-Motion>", self.drag)
         self.canvas.bind("<ButtonRelease-1>", self.end_drag)
-        self.canvas.bind("<Button-3>", self.show_menu)
+        self.canvas.bind(desktop.RIGHT_CLICK, self.show_menu)
 
         self.cfg = load_config()
         self.menu = None
