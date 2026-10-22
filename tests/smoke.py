@@ -10,6 +10,7 @@
    claude-pet-cli as the hook, then starts ClaudePet for a few seconds and checks he's up.
 """
 import argparse
+import faulthandler
 import json
 import os
 import subprocess
@@ -158,6 +159,9 @@ def test_pet(shots):
         (lambda: p.set_outfit("party hat"), 0.2),
         (lambda: p.show_menu(Click), 0.5), (lambda: shot("menu"), 0.1),
         (lambda: p.menu and p.menu.set_hover("fit:crown"), 0.3), (lambda: p.menu and p.menu.close(), 0.3),
+        # the backdrop is this process's window, so a click would raise it with the Alt tap, and on
+        # Windows that Alt puts its title bar in menu mode, which stalls Tk: drop it before clicking
+        (lambda: backdrop.destroy(), 0.2),
         (lambda: p.clicked(), 1.0),
     ]
 
@@ -221,6 +225,7 @@ def main():
     ap.add_argument("--shots")
     ap.add_argument("--frozen")
     args = ap.parse_args()
+    faulthandler.dump_traceback_later(240, exit=True)   # a stall prints where it is and fails, not hangs CI
     if args.shots:
         Path(args.shots).mkdir(parents=True, exist_ok=True)
     print(f"{sys.platform}, Python {sys.version.split()[0]}, home {HOME}", flush=True)
