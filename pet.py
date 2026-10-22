@@ -9,7 +9,7 @@ State comes from ~/.claude-pet/status (written by hook.py):
 He only shows while Claude is open: the Claude desktop app's window (shown or
 minimized) or a terminal running Claude Code. Background agents don't count.
 Drag with the left mouse button to put him on any ledge (he patrols that
-height). Right-click for outfits, sound, the energy bar and quit.
+height). Right-click for his menu (pet_menu.py): outfits, sound, the energy bar, quit.
 """
 import ctypes
 import json
@@ -22,6 +22,7 @@ import tkinter as tk
 from pathlib import Path
 
 import shared
+from pet_menu import CRAB, PetMenu
 from shared import CONFIG as CONFIG_FILE
 from shared import CONTEXT as CONTEXT_FILE
 from shared import DETAIL as DETAIL_FILE
@@ -39,16 +40,6 @@ BODY = "#D97757"
 # Lithnode draws (static/sprites.js), with a thin dark outline so he shows on light wallpaper.
 CRAB_BODY = "#ecebe6"
 CRAB_OUTLINE = "#24242a"
-CRAB = (
-    ".##......##.",
-    "#.#......#.#",
-    "###......###",
-    ".#.######.#.",
-    "..########..",
-    "..########..",
-    "..#.#..#.#..",
-    ".##.#..#.##.",
-)
 EYE = "#000000"
 INK = "#1a1b26"
 STATES = ("idle", "working", "waiting", "celebrate")
@@ -226,7 +217,7 @@ class Pet:
         self.canvas.bind("<Button-3>", self.show_menu)
 
         self.cfg = load_config()
-        self.build_menu()
+        self.menu = None
 
         self.context_fill = read_context_fill()
         self.lith = lithnode_open()
@@ -242,45 +233,37 @@ class Pet:
         self.tick()
 
     # menu ------------------------------------------------------------------
-    def build_menu(self):
-        self.menu = tk.Menu(self.root, tearoff=0)
-        outfits = tk.Menu(self.menu, tearoff=0)
-        self.outfit_var = tk.StringVar(value=self.cfg["outfit"])
-        for name in OUTFITS:
-            outfits.add_radiobutton(
-                label=name.title(), value=name, variable=self.outfit_var,
-                command=self.save_menu_choices,
-            )
-        self.menu.add_cascade(label="Outfit", menu=outfits)
-        self.sound_var = tk.BooleanVar(value=self.cfg["sound"])
-        self.menu.add_checkbutton(
-            label="Sound when he needs you", variable=self.sound_var,
-            command=self.save_menu_choices,
-        )
-        self.energy_var = tk.BooleanVar(value=self.cfg["energy_bar"])
-        self.menu.add_checkbutton(
-            label="Energy bar", variable=self.energy_var,
-            command=self.save_menu_choices,
-        )
-        self.menu.add_separator()
-        self.menu.add_command(label="Quit", command=self.root.destroy)
+    def show_menu(self, event):
+        if self.menu:
+            self.menu.close()
+            return
+        self.menu = PetMenu(self, event.x_root, event.y_root)
 
-    def save_menu_choices(self):
-        self.cfg = {
-            "outfit": self.outfit_var.get(),
-            "sound": self.sound_var.get(),
-            "energy_bar": self.energy_var.get(),
-        }
+    def menu_state(self):
+        return read_state(time.time())
+
+    def menu_detail(self):
+        return read_detail()
+
+    def set_outfit(self, name):
+        self.cfg["outfit"] = name
         save_config(self.cfg)
 
-    def show_menu(self, event):
-        try:
-            self.menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            self.menu.grab_release()
+    def toggle_sound(self):
+        self.cfg["sound"] = not self.cfg["sound"]
+        save_config(self.cfg)
+
+    def toggle_energy_bar(self):
+        self.cfg["energy_bar"] = not self.cfg["energy_bar"]
+        save_config(self.cfg)
+
+    def quit(self):
+        self.root.destroy()
 
     # dragging --------------------------------------------------------------
     def start_drag(self, event):
+        if self.menu:
+            self.menu.close()
         self.dragging = True
         self.dx, self.dy = event.x, event.y
 

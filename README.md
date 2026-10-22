@@ -32,8 +32,8 @@ sessions (`claude -p`, the Agent SDK, Lithnode's agents) never bring him up.
 **In Lithnode:** while the [Lithnode](https://lithnode.com) app is open, Clawd turns into
 Lithnode's white crab; close Lithnode and he's Clawd again.
 
-Drag him onto any ledge and he patrols it. Right-click for outfits, the
-chime, the energy bar and quit.
+Drag him onto any ledge and he patrols it. Right-click for his menu: status,
+energy, outfit tiles, the chime and energy-bar switches, and quit.
 
 ## How it works
 
