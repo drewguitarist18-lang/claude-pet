@@ -111,6 +111,20 @@
   section { padding-block: 84px; }
   .head { display: grid; gap: 14px; margin-bottom: 40px; max-width: 640px; }
 
+  /* the film: plays muted while on screen; the button starts it over with sound */
+  .film { padding-block: 72px 0; }
+  .film .head { margin-inline: auto; text-align: center; justify-items: center; }
+  .film .frame { position: relative; max-width: 940px; margin: 0 auto; aspect-ratio: 16 / 9; border-radius: 18px; overflow: hidden; background: var(--screen); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .film video { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .film .sound { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; padding: 7px 18px 7px 7px; border-radius: 999px;
+                 border: 1px solid #ffffff3d; background: #0d0c1180; color: #f2ede7; font: 500 .9rem "DM Mono", monospace; cursor: pointer; white-space: nowrap;
+                 backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: transform .2s; }
+  .film .sound i { width: 32px; height: 32px; border-radius: 50%; background: var(--clay); color: #fff; display: grid; place-items: center; }
+  .film .sound svg { width: 14px; height: 14px; margin-left: 2px; }
+  .film .sound:hover { transform: translateX(-50%) scale(1.04); }
+  .film .sound:focus-visible { outline: 2px solid var(--clay); outline-offset: 3px; }
+  @media (max-width: 560px) { .film .sound { bottom: 8px; font-size: .74rem; padding: 4px 12px 4px 4px; gap: 7px; } .film .sound i { width: 24px; height: 24px; } .film .sound svg { width: 11px; height: 11px; } }
+
   /* states */
   .states { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
   @media (max-width: 900px) { .states { grid-template-columns: repeat(2, 1fr); } }
@@ -194,6 +208,7 @@
   <div class="bar">
     <a class="brand" href="#"><canvas id="logo" width="60" height="40" aria-hidden="true"></canvas>Claude Pet</a>
     <div class="links">
+      <a class="hide-sm" href="#film">Film</a>
       <a class="hide-sm" href="#states">What he does</a>
       <a class="hide-sm" href="#install">Install</a>
       <a href="https://github.com/drewguitarist18-lang/claude-pet">GitHub</a>
@@ -235,6 +250,19 @@
     </div>
   </div>
 </header>
+
+<section class="film" id="film">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">24 seconds</div>
+      <h2>Clawd, in motion.</h2>
+    </div>
+    <div class="frame">
+      <video id="ad" src="/media/claude-pet-ad.mp4" poster="/media/ad-poster.jpg" muted loop playsinline preload="metadata" aria-label="Claude Pet film: Clawd works, brings subagent buddies, jumps you to Claude, celebrates, naps at the usage limit and tries on outfits"></video>
+      <button class="sound" id="sound"><i><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></i>Watch with sound</button>
+    </div>
+  </div>
+</section>
 
 <section id="states">
   <div class="wrap">
@@ -521,7 +549,13 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-// clock, sticky nav border, copy buttons
+// the film
+const ad = document.getElementById("ad"), sound = document.getElementById("sound");
+let withSound = false;
+new IntersectionObserver(([e]) => { if (withSound) return; if (e.isIntersecting && !reduce) ad.play().catch(() => {}); else ad.pause(); }, { threshold: .4 }).observe(ad);
+sound.onclick = () => { withSound = true; sound.hidden = true; ad.muted = false; ad.loop = false; ad.controls = true; ad.currentTime = 0; ad.play().catch(() => {}); };
+
+// clock, nav pill, copy buttons
 const clock = document.getElementById("clock");
 const tick = () => clock.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 tick(); setInterval(tick, 30000);
