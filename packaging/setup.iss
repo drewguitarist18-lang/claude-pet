@@ -1,5 +1,5 @@
 ; Inno Setup script for ClaudePetSetup.exe. Build everything with packaging\build.ps1.
-#define AppVersion "1.1.0"
+#define AppVersion "1.2.0"
 
 [Setup]
 AppId={{3B6E1F27-9A4C-4D58-B2E7-6C1D0F9A8E35}

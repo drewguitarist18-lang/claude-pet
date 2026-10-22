@@ -1,8 +1,12 @@
-"""Entry point for the installed Claude Pet app (built by packaging/build.ps1).
+"""Entry point for the installed Claude Pet app (built by packaging/build.ps1 on Windows,
+packaging/build.sh on the Mac and Linux).
 
-ClaudePet.exe       (no console)  runs Clawd; the hook starts him when Claude Code is in use
-claude-pet-cli.exe  (console)     `hook <Event>`          the Claude Code hook that feeds him
-                                  `install` / `uninstall` add or remove the hooks in ~/.claude/settings.json
+ClaudePet       (no console)  runs Clawd; the hook starts him when Claude Code is in use
+claude-pet-cli  (console)     `hook <Event>`          the Claude Code hook that feeds him
+                              `install` / `uninstall` add or remove the hooks in ~/.claude/settings.json
+                              (and, off Windows, starting him when you sign in)
+(both .exe on Windows). The Windows installer runs `install`; on the Mac and Linux the pet runs it
+himself the first time he starts from where he's installed.
 """
 import json
 import os
@@ -14,10 +18,12 @@ from pathlib import Path
 EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
           "Notification", "Stop", "StopFailure", "SubagentStart", "SubagentStop", "SessionEnd")
 SETTINGS = Path.home() / ".claude" / "settings.json"
+WINDOWS = sys.platform == "win32"
+SET_UP = Path.home() / ".claude-pet" / "installed"   # off Windows: the first start added the hooks
 
 
 def _cli():
-    return Path(sys.executable).with_name("claude-pet-cli.exe")
+    return Path(sys.executable).with_name("claude-pet-cli.exe" if WINDOWS else "claude-pet-cli")
 
 
 def _is_pet_hook(command):
@@ -69,6 +75,28 @@ def install():
     for event in EVENTS:
         hooks.setdefault(event, []).append({"hooks": [{"type": "command", "command": f'"{cli}" hook {event}'}]})
     _save(data)
+    if not WINDOWS:   # the Windows installer sets this up itself
+        import shared
+        shared.set_start_at_login(True)
+        SET_UP.parent.mkdir(parents=True, exist_ok=True)
+        SET_UP.write_text(str(_cli()))
+
+
+def _first_start():
+    """Off Windows there's no installer: add the hooks the first time the pet starts from a real
+    install (not from the disk image it came on, or a folder that's about to move)."""
+    exe = str(Path(sys.executable).resolve())
+    if WINDOWS or not getattr(sys, "frozen", False) or exe.startswith(("/Volumes/", "/private/var/folders/")):
+        return
+    try:
+        if SET_UP.read_text().strip() == str(_cli()):
+            return
+    except OSError:
+        pass
+    try:
+        install()
+    except (OSError, ValueError):
+        pass
 
 
 def uninstall():
@@ -82,11 +110,15 @@ def uninstall():
         if not hooks:
             data.pop("hooks", None)
         _save(data)
+    if not WINDOWS:
+        import shared
+        shared.set_start_at_login(False)
 
 
 def main():
     args = sys.argv[1:]
     if Path(sys.executable).stem.lower() != "claude-pet-cli":
+        _first_start()
         sys.argv = ["pet.py"]
         runpy.run_module("pet", run_name="__main__")
     elif args[:1] == ["hook"]:

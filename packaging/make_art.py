@@ -1,5 +1,6 @@
 """Draw the installer's art from Clawd's 12x8 pixel grid (the same one pet.py draws):
-claude-pet.ico (16 to 256 px) and the wizard's corner logo at 1x and 2x. Standard library only.
+claude-pet.ico (16 to 256 px), the wizard's corner logo at 1x and 2x, claude-pet.icns for the
+Mac app and claude-pet.png. Standard library only.
 """
 import struct
 import zlib
@@ -55,6 +56,13 @@ def ico(path, sizes=(16, 24, 32, 48, 64, 128, 256)):
     path.write_bytes(head + entries + b"".join(images))
 
 
+def icns(path):
+    """Mac icon: PNGs at 128, 256 and 512 px (icns types ic07, ic08, ic09)."""
+    body = b"".join(kind + struct.pack(">I", len(data) + 8) + data for kind, data in
+                    ((b"ic07", png(pixels(128))), (b"ic08", png(pixels(256))), (b"ic09", png(pixels(512)))))
+    path.write_bytes(b"icns" + struct.pack(">I", len(body) + 8) + body)
+
+
 def bmp(path, size):
     """24-bit BMP on the wizard's dark background (Inno Setup wants BMPs)."""
     rows = pixels(size, BG)
@@ -70,3 +78,4 @@ if __name__ == "__main__":
     bmp(HERE / "wizard-small-1x.bmp", 58)
     bmp(HERE / "wizard-small-2x.bmp", 116)
     (HERE / "claude-pet.png").write_bytes(png(pixels(256)))
+    icns(HERE / "claude-pet.icns")

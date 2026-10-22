@@ -8,6 +8,7 @@ import json
 import tkinter as tk
 import tkinter.font as tkfont
 
+import desktop
 from shared import TODAY
 
 KEY = "#010203"
@@ -26,7 +27,7 @@ CRAB = (
     ".##.#..#.##.",
 )
 W, PAD, NOTCH = 268, 14, 4
-FONT, BOLD, SMALL = ("Segoe UI", 9), ("Segoe UI Semibold", 10), ("Consolas", 7, "bold")
+FONT, BOLD, SMALL = desktop.font("ui", 9), desktop.font("ui-bold", 10), desktop.font("mono", 7, "bold")
 LABELS = {"none": "None", "party hat": "Party hat", "cap": "Cap", "crown": "Crown",
           "glasses": "Glasses", "bow tie": "Bow tie",
           "witch hat": "Witch hat", "pumpkin": "Pumpkin", "santa hat": "Santa hat"}
@@ -131,12 +132,9 @@ class PetMenu:
     def __init__(self, pet, x, y):
         self.pet = pet
         self.win = tk.Toplevel(pet.root)
-        self.win.overrideredirect(True)
-        self.win.attributes("-topmost", True)
-        self.win.attributes("-transparentcolor", KEY)
-        self.win.configure(bg=KEY)
         self.c = tk.Canvas(self.win, width=W, height=10, bg=KEY, highlightthickness=0)
         self.c.pack()
+        self.reshape = desktop.see_through(self.win, self.c, KEY)
         self.hover = None
         self.items = []   # (key, l, t, r, b, action)
         self.draw()
@@ -229,6 +227,7 @@ class PetMenu:
         c.create_polygon(notched(1, 1, W - 2, h - 2), fill=PANEL, outline="")
         c.tag_lower(c.find_all()[-1])
         c.tag_lower(c.find_all()[-1])
+        self.reshape()
 
     def divider(self, y):
         self.c.create_rectangle(PAD - 4, y + 5, W - PAD + 4, y + 6, fill=EDGE, outline="")

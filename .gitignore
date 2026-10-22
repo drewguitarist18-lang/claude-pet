@@ -4,6 +4,7 @@ build/
 dist/
 packaging/.venv-build/
 packaging/*.ico
+packaging/*.icns
 packaging/*.bmp
 packaging/claude-pet.png
 .vercel/

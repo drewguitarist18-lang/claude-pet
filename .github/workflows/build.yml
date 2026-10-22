@@ -1,0 +1,98 @@
+# Builds and smoke-tests Claude Pet on Windows, macOS and Linux (under Xvfb). Every run uploads
+# the installers and screenshots as artifacts; a v* tag also puts the installers on a draft release.
+name: build
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      DISPLAY: ":99"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Linux desktop (Xvfb, screenshots, wmctrl)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q xvfb imagemagick wmctrl x11-xserver-utils libtk8.6
+          nohup Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 3
+          xsetroot -solid '#4a7ab0'
+
+      - name: Smoke test (from source)
+        shell: bash
+        run: |
+          [ "$RUNNER_OS" = Linux ] && export SMOKE_EXPECT_SHAPE=1
+          python tests/smoke.py --shots shots/source
+
+      - name: Build (Mac, Linux)
+        if: runner.os != 'Windows'
+        run: sh packaging/build.sh
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m pip install --quiet pyinstaller
+          python packaging/make_art.py
+          python -m PyInstaller --noconfirm --clean --log-level WARN --distpath dist --workpath build packaging/claude-pet.spec
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          & $iscc /Q packaging/setup.iss
+          if ($LASTEXITCODE) { throw "Inno Setup failed" }
+
+      - name: Smoke test (built app)
+        shell: bash
+        run: |
+          dir=dist/ClaudePet
+          [ "$RUNNER_OS" = macOS ] && dir="dist/Claude Pet.app/Contents/MacOS"
+          python tests/smoke.py --frozen "$dir" --shots shots/built
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shots-${{ runner.os }}
+          path: shots/
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ runner.os }}
+          path: |
+            dist/ClaudePetSetup.exe
+            dist/ClaudePet-mac.dmg
+            dist/ClaudePet-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installer-*
+          merge-multiple: true
+      - name: Draft release with the installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --title "Claude Pet ${GITHUB_REF_NAME#v}" \
+            --notes "Windows: ClaudePetSetup.exe · Mac: ClaudePet-mac.dmg · Linux: ClaudePet-linux-x86_64.tar.gz" \
+            ClaudePetSetup.exe ClaudePet-mac.dmg ClaudePet-linux-x86_64.tar.gz

@@ -3,6 +3,8 @@ import contextlib
 import ctypes
 import json
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -19,7 +21,21 @@ TODAY = DIR / "today.json"     # today's stats for the menu
 STALE_AFTER = 12 * 3600  # sessions we can't tie to a process expire after this
 
 
+WINDOWS, MAC = sys.platform == "win32", sys.platform == "darwin"
+CLAUDE_EXE = "claude.exe" if WINDOWS else "claude"   # the CLI's process name (the Mac app's too)
+
+
 def pid_alive(pid):
+    if not WINDOWS:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+        return True
     k32 = ctypes.windll.kernel32
     handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
     if not handle:
@@ -30,9 +46,37 @@ def pid_alive(pid):
     return code.value == 259  # STILL_ACTIVE
 
 
+_table = (0.0, {}, {})   # (when, table, exe paths): the pet asks a few times a second
+
+
 def process_table():
-    """pid -> (parent pid, exe name) for every running process."""
-    import ctypes
+    """pid -> (parent pid, exe name) for every running process. Names are lowercase
+    ("claude.exe" on Windows, "claude" elsewhere)."""
+    return _snapshot()[0]
+
+
+def process_exe(pid):
+    """Full path of this process's executable, or ''."""
+    if WINDOWS:
+        return _windows_path(pid)
+    if MAC:
+        return _snapshot()[1].get(pid, "")
+    try:
+        return os.readlink(f"/proc/{pid}/exe")
+    except OSError:
+        return ""
+
+
+def _snapshot():
+    global _table
+    if time.time() - _table[0] < 0.5:
+        return _table[1], _table[2]
+    table, paths = _windows_table() if WINDOWS else _mac_table() if MAC else _linux_table()
+    _table = (time.time(), table, paths)
+    return table, paths
+
+
+def _windows_table():
     from ctypes import wintypes
 
     class ENTRY(ctypes.Structure):
@@ -55,7 +99,48 @@ def process_table():
         table[entry.th32ProcessID] = (entry.th32ParentProcessID, entry.szExeFile.lower())
         ok = k32.Process32NextW(snap, ctypes.byref(entry))
     k32.CloseHandle(snap)
-    return table
+    return table, {}
+
+
+def _mac_table():
+    """From ps: comm is the executable's full path there."""
+    out = subprocess.run(["ps", "-axww", "-o", "pid=,ppid=,comm="], capture_output=True,
+                         text=True, timeout=5).stdout
+    table, paths = {}, {}
+    for line in out.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
+            pid, path = int(parts[0]), parts[2].strip()
+            table[pid] = (int(parts[1]), os.path.basename(path).lower())
+            paths[pid] = path
+    return table, paths
+
+
+def _linux_table():
+    table = {}
+    for entry in os.scandir("/proc"):
+        if not entry.name.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry.name}/stat", "rb") as f:
+                stat = f.read().decode("utf-8", "replace")
+        except OSError:
+            continue
+        name, rest = stat[stat.index("(") + 1:stat.rindex(")")], stat[stat.rindex(")") + 2:].split()
+        table[int(entry.name)] = (int(rest[1]), name.lower())
+    return table, {}
+
+
+def _windows_path(pid):
+    k32 = ctypes.windll.kernel32
+    handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return ""
+    buf = ctypes.create_unicode_buffer(1024)
+    size = ctypes.c_ulong(1024)
+    ok = k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size))
+    k32.CloseHandle(handle)
+    return buf.value if ok else ""
 
 
 def process_names():
@@ -65,47 +150,60 @@ def process_names():
 
 def process_paths(name):
     """Full exe paths of running processes with this exe name (lowercase)."""
-    k32 = ctypes.windll.kernel32
-    paths = []
-    for pid, (_, exe) in process_table().items():
-        if exe != name:
-            continue
-        handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
-        if not handle:
-            continue
-        buf = ctypes.create_unicode_buffer(1024)
-        size = ctypes.c_ulong(1024)
-        if k32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
-            paths.append(buf.value)
-        k32.CloseHandle(handle)
-    return paths
+    paths = (process_exe(pid) for pid, (_, exe) in process_table().items() if exe == name)
+    return [path for path in paths if path]
 
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+LAUNCH_AGENT = Path.home() / "Library" / "LaunchAgents" / "com.claudepet.pet.plist"
+AUTOSTART = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "autostart" / "claude-pet.desktop"
 
 
-def set_start_with_windows(on):
-    """Start the installed pet at sign-in (HKCU Run), or stop doing that. Source runs are left alone."""
-    import sys
-    import winreg
+def pet_command():
+    """How to start the installed pet: the Mac app through `open` (so it runs as an app), else its program."""
+    exe = Path(sys.executable)
+    if MAC and ".app/" in str(exe):
+        return ["/usr/bin/open", "-g", str(exe)[:str(exe).index(".app/") + 4]]
+    return [str(exe.with_name("ClaudePet.exe" if WINDOWS else "ClaudePet"))]
+
+
+def set_start_at_login(on):
+    """Start the installed pet when you sign in, or stop doing that: the HKCU Run key on Windows, a
+    LaunchAgent on the Mac, an XDG autostart entry on Linux. Source runs are left alone."""
     if not getattr(sys, "frozen", False):
         return
-    exe = os.path.join(os.path.dirname(sys.executable), "ClaudePet.exe")
+    command = pet_command()
     try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        if WINDOWS:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+                if on:
+                    winreg.SetValueEx(key, "Claude Pet", 0, winreg.REG_SZ, f'"{command[0]}"')
+                else:
+                    try:
+                        winreg.DeleteValue(key, "Claude Pet")
+                    except FileNotFoundError:
+                        pass
+        elif MAC:
             if on:
-                winreg.SetValueEx(key, "Claude Pet", 0, winreg.REG_SZ, f'"{exe}"')
+                import plistlib
+                LAUNCH_AGENT.parent.mkdir(parents=True, exist_ok=True)
+                LAUNCH_AGENT.write_bytes(plistlib.dumps(
+                    {"Label": "com.claudepet.pet", "ProgramArguments": command, "RunAtLoad": True}))
             else:
-                try:
-                    winreg.DeleteValue(key, "Claude Pet")
-                except FileNotFoundError:
-                    pass
+                LAUNCH_AGENT.unlink(missing_ok=True)
+        elif on:
+            AUTOSTART.parent.mkdir(parents=True, exist_ok=True)
+            AUTOSTART.write_text("[Desktop Entry]\nType=Application\nName=Claude Pet\n"
+                                 f'Exec="{command[0]}"\nX-GNOME-Autostart-enabled=true\nNoDisplay=true\n')
+        else:
+            AUTOSTART.unlink(missing_ok=True)
     except OSError:
         pass
 
 
 def live_sessions():
-    """{session id: entry} for sessions whose claude.exe is still running."""
+    """{session id: entry} for sessions whose Claude process is still running."""
     try:
         data = json.loads(SESSIONS.read_text())
     except (OSError, ValueError):

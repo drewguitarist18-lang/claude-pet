@@ -11,24 +11,24 @@ Reactions: a facepalm when a tool fails, fireworks on a git commit or push. Suba
 as tiny buddies beside him. Click him to jump to Claude (the session that needs you first), or
 to open the Claude app when no window is up.
 
-"Always on screen" (the default) keeps him up all the time and starts him with Windows; switched
+"Always on screen" (the default) keeps him up all the time and starts him when you sign in; switched
 off, he only shows while Claude is open (the desktop app's window, or a terminal running Claude
 Code). Background agents don't count.
 Drag with the left mouse button to put him on any ledge (he patrols that
 height). Right-click for his menu (pet_menu.py): outfits, sound, the context bar, quit.
 """
-import ctypes
 import json
 import math
 import os
 import random
-import struct
 import sys
 import time
 import tkinter as tk
 from pathlib import Path
 
+import desktop
 import shared
+from desktop import app_window_visible, focus_session, lithnode_open, open_claude_app
 from pet_menu import CRAB, PetMenu, draw_seasonal, mini_clawd, outfits_now
 from shared import CONFIG as CONFIG_FILE
 from shared import CONTEXT as CONTEXT_FILE
@@ -140,118 +140,11 @@ def open_sessions():
 
 
 def claude_running():
-    """True while any claude.exe runs (the desktop app or Claude Code)."""
+    """True while any Claude process runs (the desktop app or Claude Code)."""
     try:
-        return "claude.exe" in shared.process_names()
+        return shared.CLAUDE_EXE in shared.process_names()
     except Exception:
         return True   # can't tell: fall back to the sessions alone
-
-
-WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
-
-
-def app_window_visible(pid):
-    """True if this process owns a visible (or minimized) top-level window."""
-    return find_window(pid) is not None
-
-
-def find_window(pid):
-    """This process's main top-level window (visible or minimized), or None."""
-    user32 = ctypes.windll.user32
-    found = []
-
-    def visit(hwnd, _):
-        if not user32.IsWindowVisible(hwnd):
-            return True
-        owner = ctypes.c_ulong()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
-        if owner.value != pid or user32.GetWindowTextLengthW(hwnd) == 0:
-            return True
-        rect = ctypes.create_string_buffer(16)
-        user32.GetWindowRect(hwnd, rect)
-        left, top, right, bottom = struct.unpack("4i", rect.raw)
-        if user32.IsIconic(hwnd) or (right - left > 200 and bottom - top > 200):
-            found.append(hwnd)
-            return False
-        return True
-
-    user32.EnumWindows(WNDENUMPROC(visit), 0)
-    return found[0] if found else None
-
-
-def focus_session(session):
-    """Bring the window this session runs in to the front: the desktop app's, or the terminal
-    (or editor) that started the CLI. True if one was found."""
-    user32 = ctypes.windll.user32
-    hwnd = find_window(session["app"]) if session.get("app") else None
-    if hwnd is None and session.get("pid"):
-        try:
-            table = shared.process_table()
-        except Exception:
-            table = {}
-        pid = session["pid"]
-        for _ in range(12):
-            pid = table.get(pid, (0, ""))[0]
-            if not pid or pid not in table:
-                break
-            hwnd = find_window(pid)
-            if hwnd:
-                break
-    return bool(hwnd) and bring_to_front(hwnd)
-
-
-def bring_to_front(hwnd):
-    """Windows only lets the foreground app hand over focus, and the pet never takes focus, so
-    tap Alt first (the usual way around that lock), then restore and raise the window."""
-    user32 = ctypes.windll.user32
-    if user32.IsIconic(hwnd):
-        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-    user32.keybd_event(0x12, 0, 0, 0)  # VK_MENU down
-    user32.keybd_event(0x12, 0, 2, 0)  # and up
-    user32.SetForegroundWindow(hwnd)
-    user32.BringWindowToTop(hwnd)
-    return user32.GetForegroundWindow() == hwnd
-
-
-def open_claude_app():
-    """Start (or wake) the Claude desktop app through its app id; a running copy comes forward.
-    The id comes from a running Claude.exe's package folder, else the Store package's usual one."""
-    family = "Claude_pzs8sxrjxfjjc"
-    try:
-        for proc_path in shared.process_paths("claude.exe"):
-            parts = proc_path.replace("/", "\\").split("\\")
-            if "WindowsApps" in parts:
-                package = parts[parts.index("WindowsApps") + 1]   # Claude_<version>_x64__<hash>
-                family = package.split("_")[0] + "_" + package.rsplit("__", 1)[-1]
-                break
-    except Exception:
-        pass
-    try:
-        os.startfile(f"shell:AppsFolder\\{family}!Claude")
-        return True
-    except OSError:
-        return False
-
-
-def lithnode_open():
-    """True while the Lithnode app window is open (shown or minimized)."""
-    user32 = ctypes.windll.user32
-    found = []
-
-    def visit(hwnd, _):
-        if not user32.IsWindowVisible(hwnd) or user32.GetWindowTextLengthW(hwnd) != 8:
-            return True
-        title = ctypes.create_unicode_buffer(16)
-        cls = ctypes.create_unicode_buffer(64)
-        user32.GetWindowTextW(hwnd, title, 16)
-        user32.GetClassNameW(hwnd, cls, 64)
-        if title.value == "Lithnode" and cls.value == "Chrome_WidgetWin_1":
-            found.append(hwnd)
-            return False
-        return True
-
-    user32.EnumWindows(WNDENUMPROC(visit), 0)
-    return bool(found)
 
 
 def pet_visibility(sessions):
@@ -262,27 +155,11 @@ def pet_visibility(sessions):
     return True, show
 
 
-_instance_lock = None
-
-
-def already_running():
-    """Take a named mutex; True if another pet already holds it."""
-    global _instance_lock
-    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    k32.CreateMutexW.restype = ctypes.c_void_p
-    _instance_lock = k32.CreateMutexW(None, False, "Local\\ClaudePetSingleInstance")
-    return ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
-
-
 # ------------------------------------------------------------------------ pet
 
 class Pet:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.overrideredirect(True)
-        self.root.attributes("-topmost", True)
-        self.root.attributes("-transparentcolor", TRANSPARENT)
-        self.root.configure(bg=TRANSPARENT)
         self.sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
         self.x = float(self.sw - W - 200)
@@ -293,6 +170,7 @@ class Pet:
             self.root, width=W, height=H, bg=TRANSPARENT, highlightthickness=0
         )
         self.canvas.pack()
+        self.reshape = desktop.see_through(self.root, self.canvas, TRANSPARENT)
         self.canvas.bind("<ButtonPress-1>", self.start_drag)
         self.canvas.bind("<B1-Motion>", self.drag)
         self.canvas.bind("<ButtonRelease-1>", self.end_drag)
@@ -353,7 +231,7 @@ class Pet:
     def toggle_always_on(self):
         self.cfg["always_on"] = not self.cfg["always_on"]
         save_config(self.cfg)
-        shared.set_start_with_windows(self.cfg["always_on"])
+        shared.set_start_at_login(self.cfg["always_on"])
 
     def toggle_energy_bar(self):
         self.cfg["energy_bar"] = not self.cfg["energy_bar"]
@@ -542,7 +420,7 @@ class Pet:
             text = text[:25] + "…"
         label_y = max(16, oy - 42)  # sit just above his head (and his hat)
         label = c.create_text(
-            W / 2, label_y, text=text, font=("Consolas", 9, "bold"), fill="#e8e6f0"
+            W / 2, label_y, text=text, font=desktop.font("mono", 9, "bold"), fill="#e8e6f0"
         )
         x0, y0, x1, y1 = c.bbox(label)
         l, t, r, b = x0 - 9, y0 - 4, x1 + 9, y1 + 4
@@ -747,13 +625,24 @@ class Pet:
         if state == "sleeping":
             for i in range(3):
                 phase = (t * 0.45 + i / 3) % 1
+                if getattr(self.reshape, "shaped", False):   # a shaped window shows text as a box
+                    self.pixel_z(W / 2 + 24 + phase * 16, oy - 2 - phase * 26, 2 + round(phase * 1.5))
+                    continue
                 c.create_text(W / 2 + 24 + phase * 16, oy - 2 - phase * 26, text="z",
-                              fill="#7a7f99", font=("Segoe UI", int(8 + phase * 6), "bold"))
+                              fill="#7a7f99", font=desktop.font("ui", int(8 + phase * 6), "bold"))
         elif tired == 3 and not (react or working or state in ("waiting", "celebrate")):
             self.bubble(f"Context {self.context_fill:.0%} full", oy, accent="#e0af68")
 
         if self.cfg["energy_bar"]:
             self.draw_energy_bar()
+        self.reshape()
+
+    def pixel_z(self, cx, cy, size):
+        """A blocky z, 4x4 cells of `size` px, centered at (cx, cy)."""
+        x0, y0 = round(cx - 2 * size), round(cy - 2 * size)
+        for col, row in ((0, 0), (1, 0), (2, 0), (3, 0), (2, 1), (1, 2), (0, 3), (1, 3), (2, 3), (3, 3)):
+            self.canvas.create_rectangle(x0 + col * size, y0 + row * size, x0 + (col + 1) * size,
+                                         y0 + (row + 1) * size, fill="#7a7f99", outline="")
 
     @property
     def eye_row(self):
@@ -864,7 +753,7 @@ class Pet:
                 mini_clawd(c, x, y, 2, self.body, "none", crab=self.lith)
         if extra:
             c.create_text(W / 2 + 96, ground - 20, text=f"+{extra}", anchor="e",
-                          font=("Consolas", 8, "bold"), fill=self.body)
+                          font=desktop.font("mono", 8, "bold"), fill=self.body)
 
     def draw_energy_bar(self):
         """Tiny pixel bar under his feet that fills up with the context window."""
@@ -882,7 +771,7 @@ class Pet:
 
 
 if __name__ == "__main__":
-    if already_running():
+    if desktop.already_running():
         raise SystemExit
     DIR.mkdir(parents=True, exist_ok=True)
     if not STATUS_FILE.exists():

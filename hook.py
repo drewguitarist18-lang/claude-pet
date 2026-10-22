@@ -54,9 +54,10 @@ def age(path):
 # ---------------------------------------------------------------- processes
 
 def claude_ancestor_pids():
-    """(session pid, desktop app pid) for the nearest claude.exe ancestor.
+    """(session pid, desktop app pid) for the nearest Claude ancestor (claude.exe, or claude
+    off Windows).
 
-    The app pid is the session's parent when that is also a claude.exe (the
+    The app pid is the session's parent when that is also a Claude process (the
     desktop app's main process, which owns the window); None for a plain CLI.
     """
     try:
@@ -68,9 +69,9 @@ def claude_ancestor_pids():
         parent = table.get(pid, (0, ""))[0]
         if not parent or parent not in table:
             return None, None
-        if table[parent][1] == "claude.exe":
+        if table[parent][1] == shared.CLAUDE_EXE:
             grand = table[parent][0]
-            app = grand if grand in table and table[grand][1] == "claude.exe" else None
+            app = grand if grand in table and table[grand][1] == shared.CLAUDE_EXE else None
             return parent, app
         pid = parent
     return None, None
@@ -89,17 +90,19 @@ def launch_pet():
     LAUNCHING.write_text(str(time.time()))
     exe = Path(sys.executable)
     if getattr(sys, "frozen", False):
-        # the Claude Pet app ships ClaudePet.exe; inside the Lithnode app its windowless engine runs the pet
-        own = exe.with_name("ClaudePet.exe")
-        command = [str(own)] if own.exists() else [str(exe.with_name("lithnode-server.exe")), "pet"]
+        # the Claude Pet app ships ClaudePet(.exe); inside the Lithnode app its windowless engine runs the pet
+        command = shared.pet_command()
+        if not Path(command[-1]).exists():
+            command = [str(exe.with_name("lithnode-server.exe")), "pet"]
     else:
         pythonw = exe.with_name("pythonw.exe")
         command = [str(pythonw if pythonw.exists() else exe), str(PET)]
-    subprocess.Popen(
-        command,
-        creationflags=0x00000008 | 0x08000000,  # DETACHED_PROCESS | CREATE_NO_WINDOW
-        close_fds=True,
-    )
+    if shared.WINDOWS:
+        detach = {"creationflags": 0x00000008 | 0x08000000}  # DETACHED_PROCESS | CREATE_NO_WINDOW
+    else:
+        detach = {"start_new_session": True, "stdin": subprocess.DEVNULL,
+                  "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    subprocess.Popen(command, close_fds=True, **detach)
 
 
 # ------------------------------------------------------------ bubble / sound
@@ -177,12 +180,9 @@ def sound_enabled():
 
 
 def beep():
-    try:
-        import winsound
+    import desktop
 
-        winsound.MessageBeep(winsound.MB_ICONASTERISK)
-    except Exception:
-        pass
+    desktop.chime()
 
 
 def reaction(event, payload):
