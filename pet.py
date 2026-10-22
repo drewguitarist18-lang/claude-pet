@@ -5,6 +5,10 @@ State comes from ~/.claude-pet/status (written by hook.py):
   working    types on a little laptop with a speech bubble for the current tool
   waiting    waves and says he needs you
   celebrate  jumps with confetti after a long task finishes
+  juice      out of juice: asleep until the usage limit resets (the time is in his bubble)
+
+Reactions: a facepalm when a tool fails, fireworks on a git commit or push. Subagents show up
+as tiny buddies beside him. Click him to pet him, or while he waves, to jump to that Claude window.
 
 He only shows while Claude is open: the Claude desktop app's window (shown or
 minimized) or a terminal running Claude Code. Background agents don't count.
@@ -22,11 +26,11 @@ import tkinter as tk
 from pathlib import Path
 
 import shared
-from pet_menu import CRAB, PetMenu
+from pet_menu import CRAB, PetMenu, draw_seasonal, mini_clawd, outfits_now
 from shared import CONFIG as CONFIG_FILE
 from shared import CONTEXT as CONTEXT_FILE
 from shared import DETAIL as DETAIL_FILE
-from shared import DIR, HEARTBEAT
+from shared import DIR, HEARTBEAT, LIMIT, REACT
 from shared import STATUS as STATUS_FILE
 
 CELL = 5
@@ -45,7 +49,8 @@ INK = "#1a1b26"
 STATES = ("idle", "working", "waiting", "celebrate")
 SLEEP_AFTER = 300
 CELEBRATE_FOR = 4.0
-OUTFITS = ("none", "party hat", "cap", "crown", "glasses", "bow tie")
+REACT_FOR = 2.6
+PET_FOR = 1.4
 CONFETTI = ("#f7768e", "#e0af68", "#9ece6a", "#7dcfff", "#bb9af7")
 
 
@@ -80,7 +85,7 @@ def load_config():
         cfg = {}
     outfit = cfg.get("outfit", "none")
     return {
-        "outfit": outfit if outfit in OUTFITS else "none",
+        "outfit": outfit if outfit in outfits_now() else "none",
         "sound": bool(cfg.get("sound", True)),
         "energy_bar": bool(cfg.get("energy_bar", True)),
     }
@@ -93,6 +98,21 @@ def read_context_fill():
         return max(0.0, min(1.0, data["tokens"] / data["window"]))
     except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError):
         return 0.0
+
+
+def read_limit():
+    """Unix time the usage limit resets, 0 if it isn't hit (hook.py writes limit.json on a failed turn)."""
+    try:
+        return float(json.loads(LIMIT.read_text()).get("resets_at") or 0)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return 0.0
+
+
+def back_at(when, now):
+    """'8:10pm', or 'Fri 9am' when it's more than a day off."""
+    stamp = time.localtime(when)
+    clock = time.strftime("%I:%M%p", stamp).lstrip("0").lower().replace(":00", "")
+    return clock if when - now < 20 * 3600 else time.strftime("%a ", stamp) + clock
 
 
 def save_config(cfg):
@@ -128,6 +148,11 @@ WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p
 
 def app_window_visible(pid):
     """True if this process owns a visible (or minimized) top-level window."""
+    return find_window(pid) is not None
+
+
+def find_window(pid):
+    """This process's main top-level window (visible or minimized), or None."""
     user32 = ctypes.windll.user32
     found = []
 
@@ -147,7 +172,33 @@ def app_window_visible(pid):
         return True
 
     user32.EnumWindows(WNDENUMPROC(visit), 0)
-    return bool(found)
+    return found[0] if found else None
+
+
+def focus_session(session):
+    """Bring the window this session runs in to the front: the desktop app's, or the terminal
+    (or editor) that started the CLI. True if one was found."""
+    user32 = ctypes.windll.user32
+    hwnd = find_window(session["app"]) if session.get("app") else None
+    if hwnd is None and session.get("pid"):
+        try:
+            table = shared.process_table()
+        except Exception:
+            table = {}
+        pid = session["pid"]
+        for _ in range(12):
+            pid = table.get(pid, (0, ""))[0]
+            if not pid or pid not in table:
+                break
+            hwnd = find_window(pid)
+            if hwnd:
+                break
+    if not hwnd:
+        return False
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    user32.SetForegroundWindow(hwnd)
+    return True
 
 
 def lithnode_open():
@@ -171,9 +222,8 @@ def lithnode_open():
     return bool(found)
 
 
-def pet_visibility():
-    """(any session open, should the pet be shown)."""
-    sessions = open_sessions() if claude_running() else []
+def pet_visibility(sessions):
+    """(any session open, should the pet be shown) for these open sessions."""
     if not sessions:
         return False, False
     show = any(not s.get("app") or app_window_visible(s["app"]) for s in sessions)
@@ -221,6 +271,12 @@ class Pet:
 
         self.context_fill = read_context_fill()
         self.lith = lithnode_open()
+        self.sessions = []
+        self.limit_until = self.scanned = self.last_limit_scan = 0.0
+        self.react, self.react_seen = None, 0.0   # (kind, start)
+        self.petted = 0.0
+        self.hearts = []                          # (start, x offset)
+        self.buddies = {}                         # id -> {"born", "gone", "slot"}
         self.shown = True
         self.keep_alive = "--keep" in sys.argv
         self.last_check = 0.0
@@ -240,10 +296,19 @@ class Pet:
         self.menu = PetMenu(self, event.x_root, event.y_root)
 
     def menu_state(self):
-        return read_state(time.time())
+        return self.effective_state(time.time())
 
     def menu_detail(self):
+        now = time.time()
+        if self.effective_state(now) == "juice":
+            return "back " + back_at(self.limit_until, now)
         return read_detail()
+
+    def effective_state(self, now):
+        state = read_state(now)
+        if self.limit_until > now and state in ("idle", "sleeping"):
+            return "juice"
+        return state
 
     def set_outfit(self, name):
         self.cfg["outfit"] = name
@@ -266,6 +331,7 @@ class Pet:
             self.menu.close()
         self.dragging = True
         self.dx, self.dy = event.x, event.y
+        self.press = (event.x_root, event.y_root)
 
     def drag(self, event):
         self.x = self.root.winfo_x() + event.x - self.dx
@@ -274,6 +340,22 @@ class Pet:
 
     def end_drag(self, event):
         self.dragging = False
+        px, py = getattr(self, "press", (event.x_root, event.y_root))
+        if abs(event.x_root - px) < 4 and abs(event.y_root - py) < 4:
+            self.clicked()
+
+    def clicked(self):
+        """While he waves: jump to the Claude window that needs you. Otherwise: pet him."""
+        now = time.time()
+        if read_state(now) == "waiting":
+            waiting = sorted((s for s in self.sessions if s.get("status") == "waiting"),
+                             key=lambda s: s.get("status_ts", 0), reverse=True)
+            for session in waiting or self.sessions:
+                if focus_session(session):
+                    return
+        self.petted = now
+        self.hearts = [h for h in self.hearts if now - h[0] < 2]
+        self.hearts += [(now + i * 0.22, random.uniform(-24, 24)) for i in range(3)]
 
     # lifetime --------------------------------------------------------------
     def check_lifetime(self, now):
@@ -287,9 +369,13 @@ class Pet:
             pass
         self.context_fill = read_context_fill()
         self.lith = lithnode_open()
+        self.sessions = open_sessions() if claude_running() else []
+        self.check_limit(now)
+        self.check_reaction(now)
+        self.update_buddies(now)
         if self.keep_alive:
             return True
-        any_open, show = pet_visibility()
+        any_open, show = pet_visibility(self.sessions)
         if any_open:
             self.empty_since = None
             if show and not self.shown:
@@ -304,6 +390,55 @@ class Pet:
                 self.root.destroy()
                 return False
         return True
+
+    def check_limit(self, now):
+        """Out of juice until the usage limit resets: from limit.json, and every 15s straight from
+        the open sessions' transcripts too (in case the failed turn's hook didn't run)."""
+        if now - self.last_limit_scan > 15:
+            self.last_limit_scan = now
+            self.scanned = 0.0
+            for session in self.sessions:
+                found = shared.usage_limit(session.get("transcript"))
+                if found and found[0]:
+                    self.scanned = max(self.scanned, float(found[0]))
+        until = max(read_limit(), self.scanned)
+        self.limit_until = until if until > now else 0.0
+
+    def check_reaction(self, now):
+        try:
+            data = json.loads(REACT.read_text())
+            kind, ts = data["kind"], float(data["ts"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return
+        if ts <= self.react_seen:
+            return
+        self.react_seen = ts
+        if now - ts > 5:
+            return   # stale: it happened before he was running
+        if kind == "oops" and self.react and self.react[0] == "oops" and now - self.react[1] < 15:
+            return   # one facepalm at a time when lots of tools fail
+        self.react = (kind, now)
+
+    def reaction(self, now):
+        if self.react and now - self.react[1] < REACT_FOR:
+            return self.react[0]
+        return None
+
+    def update_buddies(self, now):
+        """One tiny buddy per running subagent; ones that finish walk off."""
+        live = set()
+        for session in self.sessions:
+            for agent_id in session.get("subagents") or {}:
+                live.add(f"{session.get('started')}:{agent_id}")
+        for key in live - set(self.buddies):
+            taken = {b["slot"] for b in self.buddies.values()}
+            self.buddies[key] = {"born": now, "gone": None,
+                                 "slot": next(i for i in range(len(taken) + 1) if i not in taken)}
+        for key, buddy in list(self.buddies.items()):
+            if key not in live and not buddy["gone"]:
+                buddy["gone"] = now
+            if buddy["gone"] and now - buddy["gone"] > 2:
+                del self.buddies[key]
 
     # energy ----------------------------------------------------------------
     @property
@@ -339,8 +474,11 @@ class Pet:
         now = time.time()
         if not self.check_lifetime(now):
             return
-        state = read_state(now)
-        walking = self.update_motion(state, now)
+        state = self.effective_state(now)
+        if self.reaction(now) or now - self.petted < PET_FOR:
+            walking = False
+        else:
+            walking = self.update_motion(state, now)
         self.draw(now - self.t0, state, walking)
         self.root.after(40, self.tick)
 
@@ -393,6 +531,8 @@ class Pet:
 
     def draw_outfit_top(self, oy):
         outfit = self.cfg["outfit"]
+        draw_seasonal(lambda col, row, color, w=1, h=1: self.px(col, row, oy, color, w, h),
+                      outfit, 3 if self.lith else 0)
         if self.lith:
             if outfit == "party hat":
                 self.px(4.5, 2, oy, "#bb9af7", w=3)
@@ -444,8 +584,20 @@ class Pet:
         c = self.canvas
         c.delete("all")
         ground = H - 6
+        now = time.time()
+        juice = state == "juice"
+        react = self.reaction(now)
+        petted = now - self.petted < PET_FOR
+        if juice:
+            state = "sleeping"
+        elif react in ("commit", "push"):
+            state = "celebrate"
+        elif react == "oops" and state == "working":
+            state = "idle"   # put the laptop down to facepalm
 
-        if walking:
+        if petted and not juice:
+            bob = round(abs(math.sin((now - self.petted) * 9)) * 4)
+        elif walking:
             bob = 1 if int(t * 6) % 2 else 0
         elif state == "waiting":
             bob = round(abs(math.sin(t * 4)) * 3)
@@ -458,7 +610,9 @@ class Pet:
         oy = ground - ROWS * CELL - bob
         working = state == "working"
 
-        if state == "celebrate":
+        if react in ("commit", "push"):
+            self.draw_fireworks(now - self.react[1])
+        elif state == "celebrate":
             for i in range(16):
                 phase = (t * 1.1 + i * 0.37) % 1
                 x = W / 2 + (i - 8) * 11 + math.sin(t * 3 + i) * 6
@@ -489,6 +643,8 @@ class Pet:
                 drop = 1 if (walking and i % 2 == step) else 0
                 self.px(col, 6, oy, h=2 - drop)
 
+        self.draw_buddies(now, ground)
+
         # Eyes (cols 3 and 8; row 1 on Clawd, row 4 on the crab)
         tired = self.tired
         blink = state == "idle" and not walking and (t % 4.5) < 0.15
@@ -501,7 +657,7 @@ class Pet:
             y0 = oy + self.eye_row * CELL
             if state == "sleeping" or blink or yawn or (wink and col == 8):
                 self.px(col, self.eye_row + 0.3, oy, color=EYE, h=0.4)
-            elif state == "celebrate":
+            elif state == "celebrate" or (petted and not juice):
                 c.create_line(x0, y0 + CELL, x0 + CELL / 2, y0, x0 + CELL, y0 + CELL,
                               fill=EYE, width=2)
             else:
@@ -522,6 +678,9 @@ class Pet:
 
         self.draw_outfit_face(oy)
         self.draw_outfit_top(oy)
+        if react == "oops":
+            self.draw_facepalm(oy)
+        self.draw_hearts(now, oy)
 
         if working and self.lith:
             self.px(2.0, 5.0, oy, color="#3b3b44", w=8.0, h=2.4)
@@ -531,7 +690,13 @@ class Pet:
                 shade = ("#9ece6a", "#7dcfff", "#e0af68")[(int(t * 3) + i) % 3]
                 self.px(2.8, 5.6 + i * 0.8, oy, color=shade, w=width, h=0.4)
             self.px(1.0, 7.3, oy, color="#8a8a92", w=10.0, h=0.7)
-        if working:
+        if juice:
+            self.bubble("Out of juice · " + back_at(self.limit_until, now), oy, accent="#e0af68")
+        elif react == "oops":
+            self.bubble("Oops!", oy, accent="#f7768e")
+        elif react in ("commit", "push"):
+            self.bubble("Committed!" if react == "commit" else "Pushed!", oy, accent="#9ece6a")
+        elif working:
             if not self.lith:
                 self.draw_laptop(t, oy)
             self.bubble(read_detail() or "Working…", oy)
@@ -540,12 +705,12 @@ class Pet:
             self.bubble("Needs you!", oy, accent="#f7768e")
         elif state == "celebrate":
             self.bubble("All done!", oy, accent="#9ece6a")
-        elif state == "sleeping":
+        if state == "sleeping":
             for i in range(3):
                 phase = (t * 0.45 + i / 3) % 1
                 c.create_text(W / 2 + 24 + phase * 16, oy - 2 - phase * 26, text="z",
                               fill="#7a7f99", font=("Segoe UI", int(8 + phase * 6), "bold"))
-        elif tired == 3:
+        elif tired == 3 and not (react or working or state in ("waiting", "celebrate")):
             self.bubble(f"Context {self.context_fill:.0%} full", oy, accent="#e0af68")
 
         if self.cfg["energy_bar"]:
@@ -591,6 +756,76 @@ class Pet:
                                          fill=CRAB_OUTLINE, outline=CRAB_OUTLINE)
         for col, row in cells:
             self.px(col, row, oy)
+
+    def draw_facepalm(self, oy):
+        """One arm across his eyes (a claw, on the crab), plus a sweat drop."""
+        if self.lith:
+            self.px(1.5, 3.4, oy, w=4.2, h=1.4)
+        else:
+            self.px(0, 2, oy, color=self.body, w=2, h=2)
+            self.px(1.6, 0.6, oy, color="#b85f42", w=4.6, h=1.3)
+        drop_x = OX + 10 * CELL
+        self.canvas.create_polygon(drop_x, oy - 4, drop_x - 3, oy + 2, drop_x + 3, oy + 2,
+                                   fill="#7dcfff", outline="#4aa3d8")
+
+    def draw_fireworks(self, age):
+        """Three bursts popping one after another above his head."""
+        c = self.canvas
+        for i, (bx, by) in enumerate(((W / 2 - 62, 34), (W / 2 + 62, 26), (W / 2 + 74, 66))):
+            phase = (age - i * 0.35) / 1.1
+            if not 0 <= phase <= 1:
+                continue
+            radius = 3 + phase * 17
+            color = CONFETTI[(i * 2) % len(CONFETTI)]
+            size = 2.5 * (1 - phase) + 1
+            for k in range(10):
+                angle = k / 10 * math.tau
+                x = bx + math.cos(angle) * radius
+                y = by + math.sin(angle) * radius + phase * phase * 8
+                c.create_rectangle(x - size, y - size, x + size, y + size, fill=color, outline="")
+
+    def draw_hearts(self, now, oy):
+        """Pixel hearts floating up after he's petted."""
+        shape = (".##.##.", "#######", ".#####.", "..###..", "...#...")
+        for start, dx in self.hearts:
+            age = now - start
+            if not 0 <= age < 1.3:
+                continue
+            x0 = W / 2 + dx - 7
+            y0 = oy - 18 - age * 28
+            for row, line in enumerate(shape):
+                for col, ch in enumerate(line):
+                    if ch == "#":
+                        self.canvas.create_rectangle(x0 + col * 2, y0 + row * 2, x0 + col * 2 + 2,
+                                                     y0 + row * 2 + 2, fill="#f7768e", outline="")
+
+    def draw_buddies(self, now, ground):
+        """Tiny Clawds (or crabs) for running subagents: two slots each side, a hop when one
+        shows up, and a walk off when it's done. More than four shows as +N."""
+        c = self.canvas
+        offsets = (-50, 50, -78, 78)
+        shown = sorted(self.buddies.values(), key=lambda b: b["slot"])
+        extra = sum(1 for b in shown if b["slot"] >= len(offsets) and not b["gone"])
+        for buddy in shown:
+            if buddy["slot"] >= len(offsets):
+                continue
+            dx = offsets[buddy["slot"]]
+            x = W / 2 + dx - 12
+            y = ground - 16
+            age = now - buddy["born"]
+            if age < 0.4:
+                y -= math.sin(age / 0.4 * math.pi) * 8
+            elif buddy["gone"]:
+                gone = now - buddy["gone"]
+                x += math.copysign(gone * 60, dx)
+                y -= 1 if int(gone * 8) % 2 else 0
+            else:
+                y -= 1 if int((now + buddy["slot"]) * 4) % 2 else 0
+            if -24 < x < W:
+                mini_clawd(c, x, y, 2, self.body, "none", crab=self.lith)
+        if extra:
+            c.create_text(W / 2 + 96, ground - 20, text=f"+{extra}", anchor="e",
+                          font=("Consolas", 8, "bold"), fill=self.body)
 
     def draw_energy_bar(self):
         """Tiny pixel bar under his feet that fills up with the context window."""

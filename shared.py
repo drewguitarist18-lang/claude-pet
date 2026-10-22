@@ -13,6 +13,9 @@ CONTEXT = DIR / "context.json"
 SESSIONS = DIR / "sessions.json"
 CONFIG = DIR / "config.json"
 HEARTBEAT = DIR / "heartbeat"
+REACT = DIR / "react.json"     # a one-off reaction for the pet: oops, commit, push
+LIMIT = DIR / "limit.json"     # set while the usage limit is hit: when it resets
+TODAY = DIR / "today.json"     # today's stats for the menu
 STALE_AFTER = 12 * 3600  # sessions we can't tie to a process expire after this
 
 
@@ -128,3 +131,28 @@ def write_sessions(sessions):
         except PermissionError:
             time.sleep(0.02 * (attempt + 1))
     tmp.unlink(missing_ok=True)
+
+
+def usage_limit(transcript_path):
+    """(resets_at, limit type) if the newest main-thread reply is a usage-limit error, else None."""
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 200_000))
+            tail = f.read().decode("utf-8", "ignore")
+    except (OSError, TypeError):
+        return None
+    for line in reversed(tail.splitlines()):
+        if '"assistant"' not in line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if record.get("type") != "assistant" or record.get("isSidechain"):
+            continue
+        if record.get("apiError") != "usage_limit_reached":
+            return None
+        info = (record.get("apiErrorParams") or {}).get("rate_limit_info") or record.get("quotaLimits") or {}
+        return info.get("resetsAt"), info.get("rateLimitType") or ""
+    return None

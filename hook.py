@@ -1,39 +1,45 @@
 """Claude Code hook for Clawd, the status pet.
 
 Usage (from a hook): python hook.py <Event>
-Events: SessionStart UserPromptSubmit PreToolUse PostToolUse Notification
-        Stop SubagentStart SubagentStop SessionEnd
+Events: SessionStart UserPromptSubmit PreToolUse PostToolUse PostToolUseFailure
+        Notification Stop StopFailure SubagentStart SubagentStop SessionEnd
 
 - Keeps one entry per open session in ~/.claude-pet/sessions.json (status,
   current tool, context fill, project, subagents). Lithnode's Office reads it too.
 - Mirrors the latest status/detail/context into small files for the pet.
+- Tells the pet about tool failures, git commits/pushes and a hit usage limit, and
+  keeps today's stats (sessions, tools, time worked) for his menu.
 - Plays a sound when Claude needs you (toggle in the pet's right-click menu).
 - Launches the pet if it isn't running, unless the session is a background
   agent (claude -p, the Agent SDK, Lithnode's agents): those never bring him up.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 import shared
-from shared import CONFIG, CONTEXT, DETAIL, DIR, HEARTBEAT, STATUS
+from shared import CONFIG, CONTEXT, DETAIL, DIR, HEARTBEAT, LIMIT, REACT, STATUS, TODAY
 
 LAUNCHING = DIR / "launching"
 PET = Path(__file__).with_name("pet.py")
 DEFAULT_WINDOW = 200_000  # override with "context_window" in config.json
 CELEBRATE_AFTER = 30  # seconds of work before a finished task gets confetti
 SUBAGENT_STALE = 30 * 60
+GIT = re.compile(r"\bgit\s+(?:-[Cc]\s+\S+\s+|--\S+\s+)*(commit|push)\b")  # git [-C dir] commit|push
 
 STATUS_FOR = {
     "SessionStart": "idle",
     "UserPromptSubmit": "working",
     "PreToolUse": "working",
     "PostToolUse": "working",
+    "PostToolUseFailure": "working",
     "Notification": "waiting",
     "Stop": "idle",
+    "StopFailure": "idle",
     "SessionEnd": "idle",
 }
 
@@ -179,6 +185,38 @@ def beep():
         pass
 
 
+def reaction(event, payload):
+    """'oops' when a tool fails, 'commit' / 'push' when git does that; None otherwise."""
+    if payload.get("agent_id"):
+        return None   # only the main thread's
+    if event == "PostToolUseFailure" and not payload.get("is_interrupt"):
+        return "oops"
+    if event == "PostToolUse" and payload.get("tool_name") in ("Bash", "PowerShell"):
+        found = GIT.findall(str((payload.get("tool_input") or {}).get("command", "")))
+        if found:
+            return "push" if "push" in found else "commit"
+    return None
+
+
+def count_today(session_id, event, payload, entry, now):
+    """Add this event to today's stats (call under the sessions lock)."""
+    today = time.strftime("%Y-%m-%d", time.localtime(now))
+    try:
+        stats = json.loads(TODAY.read_text())
+    except (OSError, ValueError):
+        stats = {}
+    if stats.get("date") != today:
+        stats = {"date": today, "sessions": [], "tools": 0, "tasks": 0, "work": 0.0}
+    if session_id not in stats["sessions"]:
+        stats["sessions"].append(session_id)
+    if event == "PreToolUse":
+        stats["tools"] += 1
+    if event in ("Stop", "StopFailure") and entry.get("worked"):
+        stats["work"] += entry.pop("worked")
+        stats["tasks"] += event == "Stop"
+    TODAY.write_text(json.dumps(stats))
+
+
 # --------------------------------------------------------------------- main
 
 def update_entry(entry, event, payload, now):
@@ -188,7 +226,7 @@ def update_entry(entry, event, payload, now):
 
     # Tool events from inside a subagent belong to that subagent's own block.
     sub = (entry.get("subagents") or {}).get(payload.get("agent_id"))
-    if sub is not None and event in ("PreToolUse", "PostToolUse"):
+    if sub is not None and event in ("PreToolUse", "PostToolUse", "PostToolUseFailure"):
         if event == "PreToolUse":  # keep showing the last action between tools
             sub["tools"] = sub.get("tools", 0) + 1
             sub["detail"] = describe_tool(payload)
@@ -200,13 +238,16 @@ def update_entry(entry, event, payload, now):
     elif event == "PreToolUse":
         entry["tools"] = entry.get("tools", 0) + 1
         detail = describe_tool(payload)
-    elif event == "PostToolUse":
+    elif event in ("PostToolUse", "PostToolUseFailure"):
         detail = "Thinking…"
-    elif event == "Stop":
+    elif event in ("Stop", "StopFailure"):
         started = entry.pop("task_start", None)
-        if started and CELEBRATE_AFTER <= now - started < 6 * 3600:
-            status = "celebrate"
-        entry["done"] = entry.get("done", 0) + 1
+        if started and now - started < 6 * 3600:
+            entry["worked"] = now - started
+            if event == "Stop" and now - started >= CELEBRATE_AFTER:
+                status = "celebrate"
+        if event == "Stop":
+            entry["done"] = entry.get("done", 0) + 1
         detail = ""
     elif event == "SessionStart":
         detail = ""
@@ -258,7 +299,14 @@ def main():
             cwd = payload.get("cwd")
             if cwd:
                 entry["cwd"], entry["project"] = cwd, Path(cwd).name or cwd
+            if payload.get("transcript_path"):
+                entry["transcript"] = payload["transcript_path"]
             status, detail = update_entry(entry, event, payload, now)
+            if not entry["headless"]:
+                try:
+                    count_today(session_id, event, payload, entry, now)
+                except OSError:
+                    pass
         shared.write_sessions(sessions)
 
     if not sessions or entry is None:
@@ -269,8 +317,18 @@ def main():
     DETAIL.write_text(detail)
     if "tokens" in entry:
         CONTEXT.write_text(json.dumps({"tokens": entry["tokens"], "window": entry["window"]}))
+    # Any session shares the account's limits: a failed turn may mean it's hit, a reply means it isn't.
+    if event == "StopFailure":
+        limit = shared.usage_limit(payload.get("transcript_path"))
+        if limit:
+            LIMIT.write_text(json.dumps({"resets_at": limit[0], "type": limit[1]}))
+    elif event in ("PreToolUse", "PostToolUse", "Stop"):
+        LIMIT.unlink(missing_ok=True)
     if entry.get("headless"):
         return
+    kind = reaction(event, payload)
+    if kind:
+        REACT.write_text(json.dumps({"kind": kind, "ts": now}))
     if event == "Notification" and sound_enabled():
         beep()
     launch_pet()

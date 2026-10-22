@@ -19,6 +19,13 @@ Settings → Apps; that removes the hooks too.
 | working | types on a little laptop; speech bubble shows the current tool |
 | waiting | waves, says "Needs you!", plays a chime |
 | celebrate | jumps with confetti after a task that took 30s+ |
+| out of juice | asleep with "Out of juice · 8:10pm" when you hit your usage limit; wakes when it resets |
+
+**Reactions:** a facepalm when a tool fails, fireworks when Claude runs `git commit` or `git push`.
+Each subagent shows up as a tiny buddy beside him and walks off when it's done.
+
+**Click him** to pet him (hearts). While he's waving "Needs you!", a click brings the Claude window
+that needs you to the front instead.
 
 **Energy:** he gets tired as the context window fills. Half-lidded at 50%,
 yawning and slower at 75%, sweating with a "Context N% full" bubble at 90%.
@@ -33,7 +40,9 @@ sessions (`claude -p`, the Agent SDK, Lithnode's agents) never bring him up.
 Lithnode's white crab; close Lithnode and he's Clawd again.
 
 Drag him onto any ledge and he patrols it. Right-click for his menu: status,
-context used, outfit tiles, the chime and context-bar switches, and quit.
+context used, today's sessions, tools and time worked, outfit tiles (a witch hat
+and pumpkin join in October, a Santa hat in December), the chime and
+context-bar switches, and quit.
 
 ## How it works
 

@@ -11,8 +11,8 @@ import shutil
 import sys
 from pathlib import Path
 
-EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification",
-          "Stop", "SubagentStart", "SubagentStop", "SessionEnd")
+EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+          "Notification", "Stop", "StopFailure", "SubagentStart", "SubagentStop", "SessionEnd")
 SETTINGS = Path.home() / ".claude" / "settings.json"
 
 

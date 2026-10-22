@@ -1,9 +1,14 @@
 """Clawd's right-click menu: a small dark panel with pixel-notched corners (like his speech
-bubble), a status header, outfit tiles that preview each outfit on a mini Clawd, and switches.
+bubble), a status header, today's stats, outfit tiles that preview each outfit on a mini Clawd
+(seasonal ones join in October and December), and switches.
 Everything is drawn on one canvas; the window's key color makes the corners see-through.
 """
+import datetime
+import json
 import tkinter as tk
 import tkinter.font as tkfont
+
+from shared import TODAY
 
 KEY = "#010203"
 PANEL, EDGE, HOVER, TILE = "#1b1a22", "#34323f", "#272632", "#23222c"
@@ -23,10 +28,58 @@ CRAB = (
 W, PAD, NOTCH = 268, 14, 4
 FONT, BOLD, SMALL = ("Segoe UI", 9), ("Segoe UI Semibold", 10), ("Consolas", 7, "bold")
 LABELS = {"none": "None", "party hat": "Party hat", "cap": "Cap", "crown": "Crown",
-          "glasses": "Glasses", "bow tie": "Bow tie"}
+          "glasses": "Glasses", "bow tie": "Bow tie",
+          "witch hat": "Witch hat", "pumpkin": "Pumpkin", "santa hat": "Santa hat"}
+OUTFITS = ("none", "party hat", "cap", "crown", "glasses", "bow tie")
+SEASONAL = {"witch hat": ((10, 1), (11, 2)), "pumpkin": ((10, 1), (11, 2)),
+            "santa hat": ((12, 1), (12, 31))}   # (month, day) first and last
 STATUS = {"idle": ("Hanging out", "#b8b3c6"), "working": ("Working", "#7dcfff"),
           "waiting": ("Needs you", RED), "celebrate": ("All done", "#9ece6a"),
-          "sleeping": ("Asleep", "#7a7f99")}
+          "sleeping": ("Asleep", "#7a7f99"), "juice": ("Out of juice", "#e0af68")}
+
+
+def outfits_now(today=None):
+    """The regular outfits plus whichever seasonal ones are in season today."""
+    today = today or datetime.date.today()
+    md = (today.month, today.day)
+    return OUTFITS + tuple(name for name, (first, last) in SEASONAL.items() if first <= md <= last)
+
+
+def draw_seasonal(px, outfit, top):
+    """Seasonal hats with px(col, row, color, w, h) on the 12-col grid; `top` is the head's top row."""
+    if outfit == "witch hat":
+        px(1.5, top - 0.8, "#3d2a5c", 9, 0.8)
+        px(3.5, top - 2, "#3d2a5c", 5, 1.2)
+        px(3.5, top - 1.6, "#e0af68", 5, 0.4)
+        px(4.5, top - 3, "#3d2a5c", 3, 1)
+        px(5.5, top - 3.8, "#3d2a5c", 2, 0.8)
+        px(7.2, top - 4.3, "#3d2a5c", 1.2, 0.6)
+    elif outfit == "pumpkin":
+        px(4, top - 2.2, "#ff9e3b", 4, 2.2)
+        px(3.6, top - 1.8, "#ff9e3b", 4.8, 1.4)
+        px(5.6, top - 2.2, "#d9771f", 0.8, 2.2)
+        px(5.6, top - 3, "#5b8c3a", 0.8, 0.8)
+        px(6.4, top - 3, "#5b8c3a", 0.8, 0.4)
+    elif outfit == "santa hat":
+        px(2.5, top - 1, "#f4f4f4", 7, 1)
+        px(3, top - 2, "#e0453a", 6, 1)
+        px(4.5, top - 3, "#e0453a", 4, 1)
+        px(7.5, top - 3.6, "#e0453a", 1.5, 0.8)
+        px(9, top - 3.9, "#f4f4f4", 1.2, 1.2)
+
+
+def today_stats():
+    """'3 sessions · 142 tools · 1h 12m' from hook.py's today.json, or '' before anything ran today."""
+    try:
+        stats = json.loads(TODAY.read_text())
+    except (OSError, ValueError):
+        return ""
+    if stats.get("date") != datetime.date.today().isoformat():
+        return ""
+    sessions, tools, minutes = len(stats.get("sessions", [])), stats.get("tools", 0), int(stats.get("work", 0) // 60)
+    worked = f"{minutes // 60}h {minutes % 60}m" if minutes >= 60 else f"{minutes}m"
+    return (f"{sessions} session{'s' * (sessions != 1)} · {tools} tool{'s' * (tools != 1)}"
+            f" · {worked}")
 
 
 def notched(l, t, r, b, n=NOTCH):
@@ -54,6 +107,7 @@ def mini_clawd(c, x, y, cell, body, outfit, crab=False):
     for col in (3, 8):
         px(col, eye_row, "#000000")
     top = 3 if crab else 0   # where the head starts
+    draw_seasonal(lambda col, row, color, w=1, h=1: px(col, row, color, w, h), outfit, top)
     if outfit == "party hat":
         px(4.5, top - 1, "#bb9af7", w=3); px(5.25, top - 2, "#bb9af7", w=1.5); px(5.5, top - 3, RED)
     elif outfit == "cap":
@@ -110,7 +164,7 @@ class PetMenu:
         mini_clawd(c, PAD, y + 8, 3, accent, p.cfg["outfit"], crab=p.lith)
         state = p.menu_state()
         label, dot = STATUS.get(state, STATUS["idle"])
-        detail = p.menu_detail() if state == "working" else ""
+        detail = p.menu_detail() if state in ("working", "juice") else ""
         c.create_text(PAD + 48, y + 9, text="Lithnode crab" if p.lith else "Clawd", anchor="w", font=BOLD, fill=INK)
         c.create_rectangle(PAD + 48, y + 25, PAD + 54, y + 31, fill=dot, outline="")
         status = label + (f" · {detail}" if detail else "")
@@ -128,15 +182,24 @@ class PetMenu:
         y += 48
         y = self.divider(y)
 
+        # today
+        stats = today_stats()
+        if stats:
+            c.create_text(PAD, y + 7, text="TODAY", anchor="w", font=SMALL, fill=DIM)
+            c.create_text(PAD + 44, y + 7, text=stats, anchor="w", font=FONT, fill=MUTED)
+            y += 16
+            y = self.divider(y)
+
         # outfits
         c.create_text(PAD, y + 6, text="OUTFIT", anchor="w", font=SMALL, fill=DIM)
         shown = LABELS.get(self.hover[4:] if self.hover and self.hover.startswith("fit:") else p.cfg["outfit"], "")
         c.create_text(W - PAD, y + 6, text=shown, anchor="e", font=SMALL, fill=MUTED)
         y += 16
-        gap = 4
-        tw = (W - 2 * PAD - 5 * gap) / 6
+        names = outfits_now()
+        gap = 4 if len(names) < 8 else 3
+        tw = (W - 2 * PAD - (len(names) - 1) * gap) / len(names)
         th = 36
-        for i, name in enumerate(LABELS):
+        for i, name in enumerate(names):
             l = PAD + i * (tw + gap)
             key = f"fit:{name}"
             on = name == p.cfg["outfit"]
