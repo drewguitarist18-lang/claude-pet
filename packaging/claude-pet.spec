@@ -11,7 +11,7 @@ a = Analysis(
     [str(HERE / "claude_pet_main.py")],
     pathex=[str(ROOT)],
     hiddenimports=["hook", "pet", "pet_menu", "desktop", "shared", "tkinter"] + (["winsound"] if WINDOWS else []),
-    excludes=["test", "unittest", "pydoc_data", "email", "http", "xml", "sqlite3"],
+    excludes=["test", "unittest", "pydoc_data", "email", "http", "sqlite3"] + ([] if MAC else ["xml"]),  # plistlib needs xml
 )
 pyz = PYZ(a.pure)
 icon = str(HERE / ("claude-pet.ico" if WINDOWS else "claude-pet.icns" if MAC else "claude-pet.png"))

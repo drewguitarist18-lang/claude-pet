@@ -95,7 +95,7 @@ def _first_start():
         pass
     try:
         install()
-    except (OSError, ValueError):
+    except Exception:   # never keep him from starting
         pass
 
 

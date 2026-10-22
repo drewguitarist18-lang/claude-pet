@@ -16,8 +16,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      DISPLAY: ":99"
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,18 +25,18 @@ jobs:
 
       - name: Linux desktop (Xvfb, screenshots, wmctrl)
         if: runner.os == 'Linux'
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q xvfb imagemagick wmctrl x11-xserver-utils libtk8.6
-          nohup Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
-          sleep 3
-          xsetroot -solid '#4a7ab0'
+          sudo apt-get install -y -q --no-install-recommends xvfb xauth imagemagick wmctrl x11-xserver-utils
 
       - name: Smoke test (from source)
         shell: bash
         run: |
           [ "$RUNNER_OS" = Linux ] && export SMOKE_EXPECT_SHAPE=1
-          python tests/smoke.py --shots shots/source
+          sh tests/on_screen.sh python tests/smoke.py --shots shots/source
 
       - name: Build (Mac, Linux)
         if: runner.os != 'Windows'
@@ -60,7 +59,7 @@ jobs:
         run: |
           dir=dist/ClaudePet
           [ "$RUNNER_OS" = macOS ] && dir="dist/Claude Pet.app/Contents/MacOS"
-          python tests/smoke.py --frozen "$dir" --shots shots/built
+          sh tests/on_screen.sh python tests/smoke.py --frozen "$dir" --shots shots/built
 
       - uses: actions/upload-artifact@v4
         if: always()
