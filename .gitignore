@@ -7,3 +7,6 @@ packaging/*.ico
 packaging/*.bmp
 packaging/claude-pet.png
 .vercel/
+marketing/stills/
+marketing/frames/
+marketing/*.mp4

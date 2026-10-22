@@ -1,0 +1,315 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Claude Pet Spot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=DM+Sans:opsz,wght@9..40,500;9..40,700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+  /* The 24-second spot: one 1920x1080 canvas. render.js steps it with renderFrame(t); ?t=12 shows a still. */
+  html, body { margin: 0; background: #0d0c11; }
+  canvas { display: block; width: 100vw; height: auto; max-width: 100%; }
+</style>
+<canvas id="cv" width="1920" height="1080"></canvas>
+<script src="clawd.js"></script>
+<script>
+const W = 1920, H = 1080, LENGTH = 24, TASK = 64, C = 22, GROUND = H - TASK - 18, ENDS = 20.8;
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v)), lerp = (a, b, p) => a + (b - a) * p;
+const span = (t, a, b) => clamp((t - a) / (b - a), 0, 1), ease = (p) => 1 - Math.pow(1 - clamp(p, 0, 1), 3);
+const FONT = { px: '"Pixelify Sans", monospace', sans: '"DM Sans", "Segoe UI", sans-serif', mono: '"DM Mono", Consolas, monospace' };
+window.ready = Promise.all(["700 100px Pixelify Sans", "500 40px DM Sans", "700 40px DM Sans", "500 26px DM Mono", "400 26px DM Mono"].map((f) => document.fonts.load(f))).then(() => document.fonts.ready);
+
+// ---- the story
+const CAPTIONS = [   // [from, to, eyebrow, headline]
+  [3.0, 6.9, "When Claude works", "He works too."],
+  [6.9, 9.5, "Subagents", "He brings\nbuddies."],
+  [9.5, 13.0, "Needs you?", "Click him.\nLand in Claude."],
+  [13.0, 16.0, "Job done", "Confetti when\nit ships."],
+  [16.0, 18.6, "Usage limit", "Naps until\nit resets."],
+  [18.6, ENDS, "Right-click", "Dress him up."],
+];
+const LOG = [   // [time, kind, text]
+  [3.2, "u", "> add a dark mode toggle"],
+  [3.9, "t", "● Read src/theme.ts"],
+  [4.9, "t", "● Edit src/App.tsx"],
+  [6.2, "t", "● Agent ×3  check every screen"],
+  [9.2, "ok", "✓ 3 agents done"],
+  [9.6, "warn", "? Allow Bash: npm run deploy"],
+  [9.6, "", "  1. Yes    2. No"],
+  [11.7, "u", "> 1"],
+  [12.4, "ok", "✓ Deployed to production"],
+  [13.9, "t", "● Bash  git push"],
+  [14.4, "ok", "✓ main → origin/main"],
+  [16.1, "warn", "Usage limit reached · resets 8:10pm"],
+];
+const LOG_INK = { u: "#f09a76", t: "#7dcfff", ok: "#9ece6a", warn: "#e0af68", "": "#c9c5d8" };
+const BUDDIES = [{ slot: 0, born: 7.0, gone: 9.0 }, { slot: 1, born: 7.3, gone: 9.15 }, { slot: 2, born: 7.6, gone: 9.3 }];
+const FITS = ["party hat", "cap", "crown", "glasses", "bow tie", "pumpkin", "witch hat", "santa hat"];
+const FIT_NAMES = ["Party hat", "Cap", "Crown", "Glasses", "Bow tie", "Pumpkin", "Witch hat", "Santa hat"];
+const FIT_FROM = 19.3, FIT_STEP = .19;
+const CW = { x: 1010, y: 150, w: 760, h: 540 }, BW = { x: 930, y: 112, w: 880, h: 610 };
+
+function pose(t) {
+  if (t < 2.6) { const p = span(t, .3, 2.6); return { x: lerp(-180, 960, p), state: "idle", walking: p > 0 && p < 1, dir: 1 }; }
+  if (t < 3.0) return { x: 960, state: "idle" };
+  if (t < 3.8) return { x: lerp(960, 560, ease(span(t, 3.0, 3.8))), state: "idle", walking: true, dir: -1 };
+  const energy = lerp(.18, .58, span(t, 3.8, 16));
+  if (t < 9.5) {
+    const bubble = t < 3.9 ? "Thinking…" : t < 4.9 ? "Reading theme.ts" : t < 6.2 ? "Editing App.tsx" : t < 9.2 ? "Running 3 subagents" : "Thinking…";
+    return { x: 560, state: "working", bubble, energy };
+  }
+  if (t < 11.5) return { x: 560, state: "waiting", energy };
+  if (t < 13.0) return { x: 560, state: "working", bubble: "Running npm run deploy", energy };
+  if (t < 14.5) return { x: 560, state: "celebrate", energy };
+  if (t < 16.0) return { x: 560, state: "push", age: t - 14.5, energy };
+  if (t < 18.6) return { x: 560, state: "juice" };
+  if (t < FIT_FROM) return { x: lerp(560, 960, ease(span(t, 18.6, FIT_FROM))), state: "idle", walking: true, dir: 1 };
+  const i = Math.min(FITS.length - 1, Math.floor((t - FIT_FROM) / FIT_STEP));
+  return { x: 960, state: "idle", outfit: FITS[i], fit: i, hop: (t - FIT_FROM) - i * FIT_STEP };
+}
+
+// ---- drawing
+function rrect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+
+function desktop(t) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#26232f"); g.addColorStop(1, "#16151c");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  for (const [cx, cy, r, c] of [[W * .78, 0, 900, "rgba(217,119,87,.30)"], [W * .1, H * .2, 760, "rgba(122,156,240,.15)"]]) {
+    const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, r); rg.addColorStop(0, c); rg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function night(t) {
+  const a = span(t, 15.9, 16.4) * (1 - span(t, 18.5, 19.0));
+  if (!a) return;
+  ctx.fillStyle = `rgba(6,5,14,${.58 * a})`; ctx.fillRect(0, 0, W, H - TASK);
+  for (let i = 0; i < 46; i++) {   // pixel stars, the same every frame
+    const x = (i * 397) % W, y = 30 + (i * 211) % 520, tw = .5 + .5 * Math.sin(t * 3 + i);
+    ctx.fillStyle = `rgba(232,230,240,${a * (.25 + .55 * tw)})`; ctx.fillRect(x, y, i % 3 ? 3 : 5, i % 3 ? 3 : 5);
+  }
+  ctx.fillStyle = `rgba(240,226,190,${a})`; ctx.beginPath(); ctx.arc(300, 140, 46, 0, 7); ctx.fill();
+  ctx.fillStyle = `rgba(6,5,14,${a})`; ctx.beginPath(); ctx.arc(322, 126, 42, 0, 7); ctx.fill();
+}
+
+function taskbar(t) {
+  ctx.fillStyle = "#2b2a36"; ctx.fillRect(0, H - TASK, W, TASK);
+  ctx.fillStyle = "rgba(255,255,255,.07)"; ctx.fillRect(0, H - TASK, W, 1);
+  for (let i = 0; i < 5; i++) {
+    const x = W / 2 - 150 + i * 62, on = i === 1;
+    ctx.fillStyle = on ? "rgba(255,255,255,.16)" : "rgba(255,255,255,.08)"; rrect(x, H - TASK + 13, 38, 38, 9); ctx.fill();
+    if (on) { ctx.fillStyle = BODY; ctx.fillRect(x + 10, H - TASK + 47, 18, 3); }
+  }
+  ctx.fillStyle = "#a8a4b8"; ctx.font = `400 22px ${FONT.mono}`; ctx.textAlign = "right";
+  ctx.fillText(t >= 15.9 && t < 18.6 ? "7:58 PM" : "2:41 PM", W - 34, H - TASK / 2 + 8); ctx.textAlign = "start";
+}
+
+function winFrame(r, title, alpha, scale = 1) {
+  ctx.save(); ctx.globalAlpha = alpha;
+  ctx.translate(r.x + r.w / 2, r.y + r.h / 2); ctx.scale(scale, scale); ctx.translate(-r.w / 2, -r.h / 2);
+  ctx.shadowColor = "rgba(0,0,0,.55)"; ctx.shadowBlur = 60; ctx.shadowOffsetY = 26;
+  ctx.fillStyle = "#24232e"; rrect(0, 0, r.w, r.h, 16); ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.strokeStyle = "rgba(255,255,255,.08)"; ctx.lineWidth = 2; rrect(1, 1, r.w - 2, r.h - 2, 15); ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,.035)"; rrect(0, 0, r.w, 50, [16, 16, 0, 0]); ctx.fill();
+  for (let i = 0; i < 3; i++) { ctx.fillStyle = "rgba(255,255,255,.16)"; ctx.beginPath(); ctx.arc(28 + i * 24, 25, 7, 0, 7); ctx.fill(); }
+  ctx.fillStyle = "#a8a4b8"; ctx.font = `500 22px ${FONT.mono}`; ctx.fillText(title, 112, 32);
+}
+
+function claudeWindow(t, top) {
+  const enter = ease(span(t, 3.0, 3.45)), leave = ease(span(t, 18.6, 19.0));
+  if (!enter || leave >= 1) return;
+  const pop = top && t >= 11.5 && t < 11.85 ? 1 + .025 * Math.sin(span(t, 11.5, 11.85) * Math.PI) : 1;
+  const r = { ...CW, x: CW.x + leave * 900, y: CW.y + (1 - enter) * 40 };
+  winFrame(r, "Claude Code", enter * (1 - leave), pop);
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 58, r.w, r.h - 74); ctx.clip();
+  let first = 0;
+  LOG.forEach(([at], i) => { if (i >= 9) first += ease(span(t, at, at + .3)); });
+  ctx.font = `400 26px ${FONT.mono}`;
+  LOG.forEach(([at, kind, text], i) => {
+    if (t < at) return;
+    const shown = kind === "u" ? text.slice(0, Math.ceil(text.length * span(t, at, at + .35))) : text;
+    const y = 104 + (i - first) * 48;
+    ctx.globalAlpha = enter * (1 - leave) * (kind === "u" ? 1 : ease(span(t, at, at + .2))) * clamp((y - 74) / 30, 0, 1);
+    ctx.fillStyle = LOG_INK[kind]; ctx.fillText(shown, 34, y);
+  });
+  ctx.restore(); ctx.restore();
+}
+
+function browserWindow(t) {
+  const enter = ease(span(t, 9.5, 9.8)), leave = span(t, 11.5, 11.9);
+  if (!enter || leave >= 1) return;
+  const r = { ...BW, x: BW.x + (1 - enter) * 120 };
+  winFrame(r, "Docs · Pricing page", enter * (1 - leave));
+  ctx.fillStyle = "rgba(255,255,255,.06)"; rrect(34, 76, r.w - 68, 44, 10); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.22)"; rrect(34, 160, 380, 34, 8); ctx.fill();
+  for (let i = 0; i < 6; i++) { ctx.fillStyle = "rgba(255,255,255,.09)"; rrect(34, 226 + i * 38, [760, 700, 740, 520, 720, 610][i], 16, 8); ctx.fill(); }
+  ctx.fillStyle = "rgba(122,156,240,.16)"; rrect(34, 470, r.w - 68, 106, 12); ctx.fill();
+  ctx.restore();
+}
+
+function caption(t) {
+  for (const [a, b, eyebrow, head] of CAPTIONS) {
+    if (t < a - .05 || t > b) continue;
+    const pin = ease(span(t, a, a + .38)), out = span(t, b - .25, b), alpha = pin * (1 - out), dy = (1 - pin) * 26 - out * 12;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#f09a76"; ctx.font = `500 26px ${FONT.mono}`; ctx.letterSpacing = "5px";
+    ctx.fillText(eyebrow.toUpperCase(), 140, 236 + dy); ctx.letterSpacing = "0px";
+    ctx.fillStyle = "#f2ede7"; ctx.font = `700 96px ${FONT.px}`;
+    head.split("\n").forEach((line, i) => ctx.fillText(line, 136, 340 + dy + i * 100));
+    ctx.globalAlpha = 1;
+  }
+}
+
+function title(t) {
+  const a = ease(span(t, .5, 1.1)) * (1 - span(t, 2.75, 3.05));
+  if (!a) return;
+  ctx.globalAlpha = a; ctx.textAlign = "center";
+  ctx.fillStyle = "#f2ede7"; ctx.font = `700 150px ${FONT.px}`; ctx.fillText("Meet Clawd.", W / 2, 430 - (1 - a) * 20);
+  ctx.fillStyle = "#a59d95"; ctx.font = `500 44px ${FONT.sans}`; ctx.fillText("A tiny desktop pet for Claude Code.", W / 2, 512 - (1 - a) * 20);
+  ctx.textAlign = "start"; ctx.globalAlpha = 1;
+}
+
+function cursor(t) {
+  if (t < 10.3 || t > 12.6) return;
+  let x, y;
+  if (t < 11.25) { const p = ease(span(t, 10.3, 11.25)); x = lerp(1450, 590, p); y = lerp(760, 905, p) - Math.sin(p * Math.PI) * 90; }
+  else if (t < 11.6) { x = 590; y = 905; }
+  else { const p = ease(span(t, 11.6, 12.3)); x = lerp(590, 1240, p); y = lerp(905, 560, p); }
+  const a = span(t, 10.3, 10.5) * (1 - span(t, 12.3, 12.6)), press = t > 11.35 && t < 11.5 ? .86 : 1;
+  if (t > 11.4 && t < 12) {   // click ripple
+    const p = span(t, 11.4, 12);
+    ctx.strokeStyle = `rgba(240,154,118,${(1 - p) * .9})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(590, 905, 20 + p * 90, 0, 7); ctx.stroke();
+  }
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y); ctx.scale(1.7 * press, 1.7 * press);
+  ctx.beginPath(); [[0, 0], [0, 26], [7, 20], [12, 31], [17, 29], [12, 18], [21, 18]].forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)); ctx.closePath();
+  ctx.fillStyle = "#fff"; ctx.fill(); ctx.strokeStyle = "#111"; ctx.lineWidth = 1.6; ctx.lineJoin = "round"; ctx.stroke();
+  ctx.restore();
+}
+
+function scene(t) {
+  ctx.save();
+  const z = 1 + .035 * span(t, 0, ENDS);   // a slow push in
+  ctx.translate(W / 2, H * .62); ctx.scale(z, z); ctx.translate(-W / 2, -H * .62);
+  desktop(t); night(t);
+  const clicked = t >= 11.5;
+  if (clicked) { browserWindow(t); claudeWindow(t, true); } else { claudeWindow(t, false); browserWindow(t); }
+  title(t); caption(t);
+  taskbar(t);
+  if (t > 6.9 && t < 10) buddies(ctx, 560, GROUND, C, t, BUDDIES);
+  const p = pose(t), hop = p.hop != null && p.hop < .16 ? Math.sin(p.hop / .16 * Math.PI) * 14 : 0;
+  clawd(ctx, { x: p.x, ground: GROUND - hop, cell: C, t, state: p.state, walking: !!p.walking, dir: p.dir || 1, outfit: p.outfit || "none", bubble: p.bubble, energy: p.energy, age: p.age });
+  if (p.fit != null) bubble(ctx, p.x, GROUND - hop - 11 * C, C, FIT_NAMES[p.fit], BODY);
+  cursor(t);
+  ctx.restore();
+}
+
+function endCard(t) {
+  const a = ease(span(t, ENDS, ENDS + .45));
+  if (!a) return;
+  ctx.globalAlpha = a;
+  const g = ctx.createRadialGradient(W / 2, H * .38, 0, W / 2, H * .38, 1100);
+  g.addColorStop(0, "#3a2620"); g.addColorStop(.55, "#17151c"); g.addColorStop(1, "#0d0c11");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const rise = (d) => (1 - ease(span(t, ENDS + d, ENDS + d + .5))) * 30, fade = (d) => ease(span(t, ENDS + d, ENDS + d + .5));
+  ctx.globalAlpha = a * fade(.15);
+  clawd(ctx, { x: W / 2, ground: 560 + rise(.15), cell: 24, t, state: "waiting", walking: false, dir: 1, outfit: "party hat", bubble: false });
+  ctx.textAlign = "center";
+  ctx.globalAlpha = a * fade(.35); ctx.fillStyle = "#f2ede7"; ctx.font = `700 160px ${FONT.px}`; ctx.fillText("Claude Pet", W / 2, 750 + rise(.35));
+  ctx.globalAlpha = a * fade(.5); ctx.fillStyle = "#a59d95"; ctx.font = `500 44px ${FONT.sans}`; ctx.fillText("A tiny desktop pet for Claude Code.", W / 2, 826 + rise(.5));
+  ctx.globalAlpha = a * fade(.7);
+  ctx.font = `700 36px ${FONT.sans}`; const label = "Free for Windows", bw = ctx.measureText(label).width + 84, by = 880 + rise(.7);
+  ctx.fillStyle = "#b65a3c"; rrect(W / 2 - bw / 2, by + 6, bw, 74, 16); ctx.fill();
+  ctx.fillStyle = BODY; rrect(W / 2 - bw / 2, by, bw, 74, 16); ctx.fill();
+  ctx.fillStyle = "#fff"; ctx.fillText(label, W / 2, by + 49);
+  ctx.fillStyle = "#a59d95"; ctx.font = `400 28px ${FONT.mono}`; ctx.fillText("claude-pet-iota.vercel.app", W / 2, 1010 + rise(.7));
+  ctx.globalAlpha = a * fade(.9); ctx.fillStyle = "#6f6a7a"; ctx.font = `500 20px ${FONT.sans}`;
+  ctx.fillText("Independent, open-source fan project. Not made by Anthropic.", W / 2, 1056);
+  ctx.textAlign = "start"; ctx.globalAlpha = 1;
+}
+
+function draw(t) {
+  ctx.clearRect(0, 0, W, H);
+  if (t < ENDS + .5) scene(t);
+  endCard(t);
+}
+window.renderFrame = async (t) => { await window.ready; draw(t); };
+
+// ---- the score: 120 BPM chiptune, C – Am – F – G, two seconds a bar
+const PROG = [[48, [60, 64, 67]], [45, [57, 60, 64]], [41, [57, 60, 65]], [43, [55, 59, 62]]];
+const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+function score(ac, master) {
+  const music = ac.createGain(), lp = ac.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.setValueAtTime(16000, 0);
+  lp.frequency.setValueAtTime(16000, 15.9); lp.frequency.exponentialRampToValueAtTime(700, 16.4);
+  lp.frequency.setValueAtTime(700, 18.3); lp.frequency.exponentialRampToValueAtTime(16000, 18.7);
+  music.connect(lp).connect(master);
+  const noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), nd = noise.getChannelData(0);
+  let seed = 7; for (let i = 0; i < nd.length; i++) { seed = (seed * 16807) % 2147483647; nd[i] = seed / 1073741823.5 - 1; }
+  const tone = (f, t0, dur, { type = "square", vol = .08, a = .005, r = .06, dest = music, to } = {}) => {
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.setValueAtTime(f, t0);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t0 + dur);
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol, t0 + a);
+    g.gain.setValueAtTime(vol, t0 + Math.max(a, dur - r)); g.gain.linearRampToValueAtTime(0, t0 + dur);
+    o.connect(g).connect(dest); o.start(t0); o.stop(t0 + dur + .05);
+  };
+  const hiss = (t0, dur, vol, freq, dest = music) => {
+    const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(); s.buffer = noise;
+    f.type = "highpass"; f.frequency.value = freq; g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(.001, t0 + dur);
+    s.connect(f).connect(g).connect(dest); s.start(t0, (t0 * 7.3) % .5); s.stop(t0 + dur + .02);
+  };
+  const kick = (t0, vol = .5) => tone(150, t0, .16, { type: "sine", vol, to: 42, r: .1 });
+
+  for (let beat = 0; beat < 44; beat++) {
+    const t0 = beat * .5, [root, chord] = PROG[Math.floor(beat / 4) % 4];
+    const full = t0 >= 3 && t0 < ENDS && !(t0 >= 16 && t0 < 18.5), sleepy = t0 >= 16 && t0 < 18.5;
+    if (t0 >= ENDS) break;
+    if (beat % 4 === 0) for (const n of chord) for (const d of [-4, 4]) {   // the pad
+      const o = ac.createOscillator(), g = ac.createGain(); o.type = "triangle"; o.frequency.value = hz(n); o.detune.value = d;
+      g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(sleepy ? .03 : .018, t0 + .3); g.gain.linearRampToValueAtTime(0, t0 + 2.05);
+      o.connect(g).connect(music); o.start(t0); o.stop(t0 + 2.1);
+    }
+    for (let e = 0; e < 2; e++) {   // eighth-note arpeggio, an octave up
+      const n = chord[(beat * 2 + e) % 3] + 12 + (e && beat % 2 ? 12 : 0);
+      if (!sleepy || e === 0) tone(hz(n), t0 + e * .25, .2, { type: t0 < 3 ? "triangle" : "square", vol: t0 < 3 ? .06 : .032 });
+    }
+    if (full) {
+      kick(t0, beat % 2 ? .38 : .5);
+      hiss(t0 + .25, .06, .12, 7000);
+      if (beat % 4 === 2) hiss(t0, .16, .2, 1800);   // snare-ish
+      for (let e = 0; e < 2; e++) tone(hz(root - 12 + (e ? 12 : 0)), t0 + e * .25, .22, { type: "square", vol: .05 });
+    }
+  }
+  // the hit on the end card, then a long fade
+  for (const n of [48, 60, 64, 67, 72]) tone(hz(n), ENDS, 3.2, { type: n === 48 ? "square" : "triangle", vol: n === 48 ? .05 : .05, a: .01, r: 2.6, dest: master });
+  kick(ENDS, .6); hiss(ENDS, .5, .25, 3000, master);
+  [72, 76, 79, 84].forEach((n, i) => tone(hz(n), ENDS + .12 + i * .09, .3, { type: "square", vol: .03, dest: master }));
+
+  // effects, timed to the picture
+  BUDDIES.forEach((b, i) => tone(hz(76 + i * 4), b.born, .12, { vol: .07, to: hz(88 + i * 4), dest: master }));
+  tone(hz(88), 9.62, .35, { type: "sine", vol: .14, r: .3, dest: master }); tone(hz(84), 9.8, .6, { type: "sine", vol: .14, r: .5, dest: master });   // the chime
+  hiss(11.4, .05, .4, 2500, master); tone(1800, 11.4, .03, { type: "square", vol: .05, dest: master });   // the click
+  for (let i = 0; i < 10; i++) tone(hz(84 + [0, 4, 7, 12, 16][i % 5]), 13.0 + i * .05, .08, { vol: .035, dest: master });   // confetti
+  for (let i = 0; i < 3; i++) { const t0 = 14.5 + i * .35; tone(hz(96), t0 - .25, .25, { type: "sine", vol: .04, to: hz(108), dest: master }); hiss(t0, .5, .35, 900, master); }
+  for (let i = 0; i < FITS.length; i++) tone(hz(79 + (i % 4) * 3), FIT_FROM + i * FIT_STEP, .07, { vol: .045, dest: master });
+}
+
+window.renderAudio = async () => {
+  await window.ready;
+  const rate = 48000, off = new OfflineAudioContext(2, Math.ceil(rate * LENGTH), rate);
+  const master = off.createGain(), comp = off.createDynamicsCompressor();
+  master.gain.setValueAtTime(.9, 0); master.gain.setValueAtTime(.9, LENGTH - 1.6); master.gain.linearRampToValueAtTime(0, LENGTH);
+  master.connect(comp).connect(off.destination);
+  score(off, master);
+  const buf = await off.startRendering(), n = buf.length, L = buf.getChannelData(0), R = buf.getChannelData(1);
+  const pcm = new Int16Array(n * 2); for (let i = 0; i < n; i++) { pcm[i * 2] = clamp(L[i], -1, 1) * 32767; pcm[i * 2 + 1] = clamp(R[i], -1, 1) * 32767; }
+  let s = ""; const u8 = new Uint8Array(pcm.buffer); for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);   // raw 16-bit stereo at 48 kHz
+};
+
+// opened by hand: ?t=12 for a still, otherwise it loops silently
+const q = new URLSearchParams(location.search).get("t");
+if (q !== null) window.renderFrame(+q);
+else if (!navigator.webdriver) window.ready.then(() => { const t0 = performance.now(); const loop = (now) => { draw(((now - t0) / 1000) % LENGTH); requestAnimationFrame(loop); }; requestAnimationFrame(loop); });
+</script>
