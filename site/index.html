@@ -284,7 +284,7 @@
     <div class="head">
       <div class="eyebrow">Right-click him</div>
       <h2>Dress him up.</h2>
-      <p class="lede">Right-click Clawd to pick an outfit, turn the chime on or off, hide the energy bar or quit. Drag him onto any window ledge and he'll walk along it.</p>
+      <p class="lede">Right-click Clawd to pick an outfit, turn the chime on or off, hide the context bar or quit. Drag him onto any window ledge and he'll walk along it.</p>
     </div>
     <div class="closet" role="group" aria-label="Outfits">
       <button class="fit" data-fit="none" aria-pressed="true"><canvas width="120" height="90"></canvas><span>None</span></button>
@@ -294,7 +294,7 @@
       <button class="fit" data-fit="glasses" aria-pressed="false"><canvas width="120" height="90"></canvas><span>Glasses</span></button>
       <button class="fit" data-fit="bow tie" aria-pressed="false"><canvas width="120" height="90"></canvas><span>Bow tie</span></button>
     </div>
-    <div class="extras"><span><b>Energy bar</b> under his feet</span><span><b>Chime</b> when he needs you</span><span><b>Ledges:</b> he walks along wherever you drop him</span></div>
+    <div class="extras"><span><b>Context bar</b> under his feet</span><span><b>Chime</b> when he needs you</span><span><b>Ledges:</b> he walks along wherever you drop him</span></div>
   </div>
 </section>
 
@@ -405,7 +405,7 @@ function clawd(ctx, o) {
   if (o.energy != null) {
     const w = 8 * C, l = o.x - w / 2, top = o.ground + 2, e = o.energy;
     ctx.fillStyle = "#232433"; ctx.fillRect(l - 1, top - 1, w + 2, 4);
-    ctx.fillStyle = e > .5 ? "#9ece6a" : e > .25 ? "#e0af68" : "#f7768e"; ctx.fillRect(l, top, w * e, 2);
+    ctx.fillStyle = e > .5 ? "#9ece6a" : e > .25 ? "#e0af68" : "#f7768e"; ctx.fillRect(l, top, w * (1 - e), 2);  // fills up as context is used
   }
 }
 

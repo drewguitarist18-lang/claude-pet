@@ -9,7 +9,7 @@ State comes from ~/.claude-pet/status (written by hook.py):
 He only shows while Claude is open: the Claude desktop app's window (shown or
 minimized) or a terminal running Claude Code. Background agents don't count.
 Drag with the left mouse button to put him on any ledge (he patrols that
-height). Right-click for his menu (pet_menu.py): outfits, sound, the energy bar, quit.
+height). Right-click for his menu (pet_menu.py): outfits, sound, the context bar, quit.
 """
 import ctypes
 import json
@@ -593,15 +593,15 @@ class Pet:
             self.px(col, row, oy)
 
     def draw_energy_bar(self):
-        """Tiny pixel bar under his feet: full when context is empty."""
+        """Tiny pixel bar under his feet that fills up with the context window."""
         c = self.canvas
         left = OX + 10
         width = SPRITE_W - 20
-        energy = 1.0 - self.context_fill
-        color = "#9ece6a" if energy > 0.5 else "#e0af68" if energy > 0.25 else "#f7768e"
+        used = self.context_fill
+        color = "#9ece6a" if used < 0.5 else "#e0af68" if used < 0.75 else "#f7768e"
         top = H - 4
         c.create_rectangle(left - 1, top - 1, left + width + 1, top + 3, fill="#232433", outline="")
-        c.create_rectangle(left, top, left + width * energy, top + 2, fill=color, outline="")
+        c.create_rectangle(left, top, left + width * used, top + 2, fill=color, outline="")
 
     def run(self):
         self.root.mainloop()

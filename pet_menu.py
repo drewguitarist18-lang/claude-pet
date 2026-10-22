@@ -106,7 +106,7 @@ class PetMenu:
         accent = p.body
         y = PAD
 
-        # header: mini Clawd, name, status, energy
+        # header: mini Clawd, name, status, context meter
         mini_clawd(c, PAD, y + 8, 3, accent, p.cfg["outfit"], crab=p.lith)
         state = p.menu_state()
         label, dot = STATUS.get(state, STATUS["idle"])
@@ -114,16 +114,17 @@ class PetMenu:
         c.create_text(PAD + 48, y + 9, text="Lithnode crab" if p.lith else "Clawd", anchor="w", font=BOLD, fill=INK)
         c.create_rectangle(PAD + 48, y + 25, PAD + 54, y + 31, fill=dot, outline="")
         status = label + (f" · {detail}" if detail else "")
-        room = W - PAD - 46 - (PAD + 60)   # up to the energy meter
+        room = W - PAD - 46 - (PAD + 60)   # up to the context meter
         font = tkfont.Font(family=FONT[0], size=FONT[1])
         while font.measure(status) > room and len(status) > 4:
             status = status[:-2].rstrip() + "…"
         c.create_text(PAD + 60, y + 28, text=status, anchor="w", font=FONT, fill=MUTED)
-        energy = 1.0 - p.context_fill
-        tone = "#9ece6a" if energy > .5 else "#e0af68" if energy > .25 else RED
-        c.create_text(W - PAD, y + 12, text=f"{energy:.0%}", anchor="e", font=SMALL, fill=tone)
+        used = p.context_fill
+        tone = "#9ece6a" if used < .5 else "#e0af68" if used < .75 else RED
+        c.create_text(W - PAD - 30, y + 12, text="CONTEXT", anchor="e", font=SMALL, fill=DIM)
+        c.create_text(W - PAD, y + 12, text=f"{used:.0%}", anchor="e", font=SMALL, fill=tone)
         c.create_rectangle(W - PAD - 34, y + 22, W - PAD, y + 25, fill=TILE, outline="")
-        c.create_rectangle(W - PAD - 34, y + 22, W - PAD - 34 + 34 * energy, y + 25, fill=tone, outline="")
+        c.create_rectangle(W - PAD - 34, y + 22, W - PAD - 34 + 34 * used, y + 25, fill=tone, outline="")
         y += 48
         y = self.divider(y)
 
@@ -151,7 +152,7 @@ class PetMenu:
         # switches
         for key, text, value, action in (
             ("sound", "Chime when he needs you", p.cfg["sound"], p.toggle_sound),
-            ("energy", "Energy bar", p.cfg["energy_bar"], p.toggle_energy_bar),
+            ("energy", "Context bar", p.cfg["energy_bar"], p.toggle_energy_bar),
         ):
             y = self.row(y, key, text, action, switch=value)
         y = self.divider(y)

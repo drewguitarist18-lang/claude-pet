@@ -22,7 +22,7 @@ Settings → Apps; that removes the hooks too.
 
 **Energy:** he gets tired as the context window fills. Half-lidded at 50%,
 yawning and slower at 75%, sweating with a "Context N% full" bubble at 90%.
-A small energy bar sits under his feet.
+A small context bar under his feet fills up with it.
 
 **Only while Claude is open:** he shows while the Claude desktop app's window
 is open (or minimized) or Claude Code runs in a terminal, hides when the app
@@ -33,7 +33,7 @@ sessions (`claude -p`, the Agent SDK, Lithnode's agents) never bring him up.
 Lithnode's white crab; close Lithnode and he's Clawd again.
 
 Drag him onto any ledge and he patrols it. Right-click for his menu: status,
-energy, outfit tiles, the chime and energy-bar switches, and quit.
+context used, outfit tiles, the chime and context-bar switches, and quit.
 
 ## How it works
 
