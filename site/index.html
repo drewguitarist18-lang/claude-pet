@@ -757,5 +757,15 @@ document.querySelectorAll(".copy").forEach((b) => b.onclick = async () => {
   setTimeout(() => b.textContent = "Copy", 1600);
 });
 </script>
+<!-- Ko-fi tip button, bottom corner (the same one lithnode.com has) -->
+<script src="https://storage.ko-fi.com/cdn/scripts/overlay-widget.js"></script>
+<script>
+  kofiWidgetOverlay.draw('lithnode', {
+    'type': 'floating-chat',
+    'floating-chat.donateButton.text': 'Support me',
+    'floating-chat.donateButton.background-color': '#323842',
+    'floating-chat.donateButton.text-color': '#fff'
+  });
+</script>
 </body>
 </html>
