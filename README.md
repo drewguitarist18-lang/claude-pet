@@ -1,7 +1,7 @@
 # Claude Pet
 
 Clawd, a small pixel pet who lives on your desktop (Windows, Mac or Linux), shows
-what Claude Code is doing, and takes you to Claude in one click. Site: https://claude-pet-iota.vercel.app
+what Claude Code is doing, and takes you to Claude in one click. Site: https://pet.lithnode.com
 
 ## Download
 
