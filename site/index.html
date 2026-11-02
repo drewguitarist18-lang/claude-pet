@@ -187,84 +187,81 @@ if (/iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.platform
   .copy { position: absolute; top: 8px; right: 8px; font: .75rem "DM Mono", monospace; background: #ffffff14; border: 1px solid #ffffff1f; color: var(--screen-ink); border-radius: 7px; padding: 4px 9px; cursor: pointer; }
 
 
-  /* download: lithnode.com's, in its night colors whatever the page theme: a ring of light, three systems (yours marked), the source */
+  /* download: lithnode.com's layout in Claude Pet's colors: three systems (yours marked in clay), the plugin route */
   html:not(.phone) .phone-only, html.phone .desk-only { display: none !important; }
   .os-i { width: 1em; height: 1em; flex: none; vertical-align: -0.14em; }
   .btn .os-i { width: 18px; height: 18px; }
   .fine a.osl { display: inline-flex; align-items: center; gap: 5px; text-decoration: none; color: var(--ink); }
   .fine a.osl:hover { text-decoration: underline; }
-  .dlzone, .help { --void: #08080a; --nink: #ecebe6; --soft: #b1b0aa; --faint: #74736e;
-                   --glass: rgba(236,235,230,.045); --glass-hi: rgba(236,235,230,.085); --edge: rgba(236,235,230,.13); --green: #7fc98a; }
-  .dlzone { position: relative; overflow: hidden; padding-block: 130px; background: var(--void); color: var(--nink); font-family: "DM Mono", ui-monospace, Consolas, monospace;
-            background-image: radial-gradient(900px 640px at 50% -80px, rgba(183,156,242,.1), transparent 70%),
-                              radial-gradient(700px 500px at 50% 110%, rgba(217,119,87,.07), transparent 70%); }
+  .dlzone { --void: var(--card); --nink: var(--ink); --soft: var(--muted); --faint: var(--muted); --edge: var(--line); --glass-hi: var(--card); --green: #7fc98a; }
+  .dlzone { position: relative; overflow: hidden; padding-block: 96px; background: var(--bg2); border-block: 1px solid var(--line); color: var(--ink); }
   .dlzone .wrap { position: relative; text-align: center; }
-  .glass { background: var(--glass); border: 1px solid var(--edge); border-radius: 14px; backdrop-filter: blur(18px) saturate(1.1); -webkit-backdrop-filter: blur(18px) saturate(1.1); }
-  .ring { position: absolute; left: 50%; top: -48px; width: min(640px, 100%); height: 160px; transform: translateX(-50%) rotate(-7deg); border-radius: 50%; pointer-events: none;
-          background: conic-gradient(from var(--a), transparent 0deg, rgba(183,156,242,.55) 60deg, rgba(236,235,230,.85) 110deg, rgba(122,156,240,.5) 160deg, transparent 220deg,
-                      rgba(236,235,230,.25) 290deg, transparent 360deg);
-          -webkit-mask: radial-gradient(closest-side, transparent 84%, #000 88%, #000 93%, transparent 100%);
-                  mask: radial-gradient(closest-side, transparent 84%, #000 88%, #000 93%, transparent 100%);
-          filter: blur(3px); animation: orbit 14s linear infinite; }
-  @property --a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-  @keyframes orbit { to { --a: 360deg; } }
+  .glass { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+  .dlzone .eyebrow { margin: 0 0 14px; }
   .dlzone h2 { position: relative; font: 700 clamp(36px, 5.4vw, 64px)/1.08 "Pixelify Sans", monospace; letter-spacing: -.01em; }
-  .dlzone .lead { color: var(--soft); max-width: 60ch; margin: 46px auto 0; font-size: .95rem; line-height: 1.6; }
-  .plats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 52px; text-align: left; }
+  .dlzone .lead { color: var(--soft); max-width: 60ch; margin: 18px auto 0; font-size: 1.05rem; line-height: 1.6; }
+  .plats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 44px; text-align: left; }
   .plats a.os { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 24px; text-decoration: none; color: var(--nink); min-height: 210px;
                 transition: transform .35s cubic-bezier(.16,1,.3,1), border-color .35s, background .35s; }
-  .plats a.os:hover { transform: translateY(-3px); border-color: rgba(236,235,230,.3); background: var(--glass-hi); }
-  .plats a.os .os-i { width: 34px; height: 34px; margin-bottom: 14px; }
+  .plats a.os:hover { transform: translateY(-3px); border-color: var(--clay); }
+  .plats a.os .os-i { width: 34px; height: 34px; margin-bottom: 14px; color: var(--clay); }
   .plats a.os b { font: 700 22px "Pixelify Sans", monospace; }
-  .plats a.os .meta { color: var(--soft); font-size: 13px; }
-  .plats a.os em { margin-top: auto; padding-top: 18px; display: inline-flex; align-items: center; gap: 8px; font: 500 13.5px "DM Mono", monospace; font-style: normal; color: var(--nink); }
+  .plats a.os .meta { color: var(--soft); font: 500 13px "DM Mono", monospace; }
+  .plats a.os em { margin-top: auto; padding-top: 18px; display: inline-flex; align-items: center; gap: 8px; font: 700 14px "DM Sans", sans-serif; font-style: normal; color: var(--clay-ink); }
   .plats a.os em::after { content: "↓"; transition: transform .3s cubic-bezier(.16,1,.3,1); }
   .plats a.os:hover em::after { transform: translateY(3px); }
   html.phone .plats a.os em::after { content: "→"; }
   html.phone .plats a.os:hover em::after { transform: translateX(3px); }
   .plats a.os .yours { position: absolute; top: 18px; right: 18px; height: 24px; padding: 0 9px; border-radius: 6px; font: 500 11px/24px "DM Mono", monospace;
-                       background: var(--nink); color: var(--void); display: none; }
-  .plats a.os.you { border-color: rgba(236,235,230,.42); background: linear-gradient(180deg, rgba(236,235,230,.1), rgba(236,235,230,.035));
-                    box-shadow: 0 20px 60px -30px rgba(236,235,230,.35); }
+                       background: var(--clay); color: #fff; display: none; }
+  .plats a.os.you { border-color: var(--clay); background: linear-gradient(180deg, var(--clay-soft), var(--card) 70%); box-shadow: 0 4px 0 var(--clay-ink), var(--shadow); }
   .plats a.os.you .yours { display: block; }
   @media (max-width: 760px) { .plats { grid-template-columns: 1fr; } .plats a.os { min-height: 0; } }
   .src { margin-top: 14px; padding: 18px 20px; text-align: left; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .src p { margin: 0; color: var(--soft); font-size: 13.5px; } .src p b { color: var(--nink); font-weight: 500; display: block; }
-  .src .cmd { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 8px 8px 14px; border-radius: 9px; background: rgba(0,0,0,.45); border: 1px solid var(--edge); }
-  .src .cmd::before { content: ">"; align-self: flex-start; line-height: 1.7; color: var(--green); font: 500 13px/1.7 "DM Mono", monospace; }
-  .src .cmd code { flex: 1; min-width: 0; font: 500 12.5px/1.7 "DM Mono", monospace; color: var(--nink); white-space: nowrap; overflow-x: auto; user-select: all; scrollbar-width: none; }
-  .src .cmd .copy { position: static; flex: none; height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: var(--nink); color: var(--void); font: 500 12px "DM Mono", monospace; cursor: pointer; }
+  .src p { margin: 0; color: var(--soft); font-size: 15px; } .src p b { color: var(--nink); font-weight: 700; display: block; }
+  .src .cmd { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 8px 8px 14px; border-radius: 10px; background: var(--screen); border: 1px solid var(--screen2); }
+  .src .cmd::before { content: ">"; align-self: flex-start; line-height: 1.7; color: var(--clay); font: 500 13px/1.7 "DM Mono", monospace; }
+  .src .cmd code { flex: 1; min-width: 0; font: 500 12.5px/1.7 "DM Mono", monospace; color: var(--screen-ink); white-space: nowrap; overflow-x: auto; user-select: all; scrollbar-width: none; }
+  .src .cmd .copy { position: static; flex: none; height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: var(--clay); color: #fff; font: 500 12px "DM Mono", monospace; cursor: pointer; }
   @media (max-width: 760px) { .src { grid-template-columns: 1fr; } }
-  @media (prefers-reduced-motion: reduce) { .ring { animation: none; } }
 
   /* after you press Download: the steps for your computer, next to where the browser shows its downloads */
-  .help { position: fixed; top: 84px; right: 20px; z-index: 20; width: min(400px, calc(100% - 32px)); max-height: calc(100svh - 104px); overflow: auto;
-          padding: 20px 20px 16px; border-radius: 14px; background: rgba(16,16,19,.86); border: 1px solid var(--edge); color: var(--nink);
-          font-family: "DM Mono", ui-monospace, Consolas, monospace;
-          backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  .help { --void: var(--card); --nink: var(--ink); --soft: var(--muted); --faint: var(--muted); --edge: var(--line); --glass-hi: var(--bg2);
+          position: fixed; top: 84px; right: 20px; z-index: 20; width: min(400px, calc(100% - 32px)); max-height: calc(100svh - 104px); overflow: auto;
+          padding: 20px 20px 16px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); color: var(--ink);
+          font-family: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif; box-shadow: 0 4px 0 var(--line), var(--shadow);
           opacity: 0; transform: translateY(-10px) scale(.98); transform-origin: top right; pointer-events: none;
           transition: opacity .35s cubic-bezier(.16,1,.3,1), transform .45s cubic-bezier(.16,1,.3,1); }
   .help.show { opacity: 1; transform: none; pointer-events: auto; }
-  .help .x { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border: 0; border-radius: 9px; background: transparent; color: var(--soft); cursor: pointer; font: 500 15px "DM Mono", monospace; }
-  .help .x:hover { background: var(--glass-hi); color: var(--nink); }
-  .help h3 { font: 700 15px "Pixelify Sans", monospace; margin: 2px 40px 2px 0; }
-  .help .file { color: var(--soft); font-size: 12.5px; margin: 0 0 14px; overflow-wrap: anywhere; }
-  .help .busy { height: 2px; border-radius: 2px; background: rgba(236,235,230,.12); overflow: hidden; margin-bottom: 16px; position: relative; }
-  .help .busy::after { content: ""; position: absolute; top: 0; bottom: 0; width: 30%; background: var(--nink); animation: busy 1.3s cubic-bezier(.4,0,.2,1) infinite; }
+  .help h3 { font: 700 18px "Pixelify Sans", monospace; color: var(--clay-ink); margin: 2px 0; }
+  .help .file { color: var(--soft); font: 500 12.5px "DM Mono", monospace; margin: 0 0 14px; overflow-wrap: anywhere; }
+  .help .busy { height: 3px; border-radius: 3px; background: var(--clay-soft); overflow: hidden; margin-bottom: 16px; position: relative; }
+  .help .busy::after { content: ""; position: absolute; top: 0; bottom: 0; width: 30%; background: var(--clay); animation: busy 1.3s cubic-bezier(.4,0,.2,1) infinite; }
   @keyframes busy { from { left: -30%; } to { left: 100%; } }
   .help ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; counter-reset: s; }
   .help li { display: grid; grid-template-columns: 26px 1fr; gap: 12px; counter-increment: s; }
-  .help li::before { content: counter(s); width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--edge); display: grid; place-items: center; font: 700 11px "Pixelify Sans", monospace; color: var(--nink); }
+  .help li::before { content: counter(s); width: 26px; height: 26px; border-radius: 8px; background: var(--clay); box-shadow: 0 2px 0 var(--clay-ink); display: grid; place-items: center; font: 700 12px "Pixelify Sans", monospace; color: #fff; }
   .help li > div { min-width: 0; }   /* long commands scroll inside their box instead of widening the panel */
-  .help li b { display: block; font-size: 13.5px; font-weight: 500; margin-top: 2px; }
-  .help li .tx { margin: 2px 0 0; color: var(--soft); font-size: 13px; line-height: 1.55; }
-  .help li em { font-style: normal; color: var(--nink); }
+  .help li b { display: block; font-size: 14.5px; font-weight: 700; margin-top: 2px; }
+  .help li .tx { margin: 2px 0 0; color: var(--soft); font-size: 14px; line-height: 1.55; }
+  .help li em { font-style: normal; font-weight: 700; color: var(--nink); }
   .help li .note { display: block; margin-top: 8px; }
   .help li a { color: var(--nink); }
-  .help .cmd { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 6px 6px 10px; border-radius: 9px; background: rgba(0,0,0,.35); border: 1px solid var(--edge); }
+  .help .cmd { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 6px 6px 10px; border-radius: 9px; background: var(--bg2); border: 1px solid var(--edge); }
   .help .cmd code { flex: 1; min-width: 0; font: 500 12px "DM Mono", monospace; color: var(--nink); white-space: nowrap; overflow-x: auto; user-select: all; scrollbar-width: none; }
-  .help .cmd button { flex: none; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--nink); color: var(--void); font: 500 11.5px "DM Mono", monospace; cursor: pointer; }
-  .help .again { margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--edge); color: var(--faint); font-size: 12px; }
+  .help .cmd button { flex: none; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--clay); color: #fff; font: 500 11.5px "DM Mono", monospace; cursor: pointer; }
+  /* after the steps: a tip, for anyone glad they downloaded it */
+  .help .tipme { --c: var(--clay); display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-top: 16px; padding: 12px 14px 12px 12px;
+                 border-radius: 10px; border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); background: color-mix(in srgb, var(--c) 8%, transparent);
+                 text-decoration: none; color: var(--soft); font-size: 13px; line-height: 1.5; transition: background .25s; }
+  .help .tipme:hover { background: color-mix(in srgb, var(--c) 15%, transparent); }
+  .help .tipme svg { width: 30px; height: 30px; color: var(--c); }
+  .help .tipme b { display: block; color: var(--nink); font-size: 14px; font-weight: 700; }
+  .help .tipme em { font: 700 12px "DM Mono", monospace; font-style: normal; color: var(--clay-ink); white-space: nowrap; }
+  .help .tipme:hover em { text-decoration: underline; }
+  .help .notip { display: block; width: 100%; margin-top: 8px; height: 34px; border: 1px solid var(--edge); border-radius: 10px; background: transparent; color: var(--soft); font: inherit; font-size: 12.5px; cursor: pointer; transition: background .2s, color .2s; }
+  .help .notip:hover { background: var(--glass-hi); color: var(--ink, var(--nink)); }
+  .help .again { margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--edge); color: var(--faint); font-size: 13px; }
   .help .again a { color: var(--soft); }
   @media (max-width: 600px) { .help { top: auto; bottom: 12px; right: 12px; left: 12px; width: auto; max-height: 78svh; transform: translateY(16px); transform-origin: bottom center; } }
   @media (prefers-reduced-motion: reduce) { .help .busy::after { animation: none; width: 100%; left: 0; } }
@@ -424,7 +421,7 @@ if (/iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.platform
 
 <section class="dlzone" id="install">
   <div class="wrap">
-    <div class="ring" aria-hidden="true"></div>
+    <p class="eyebrow">Install</p>
     <h2>Download.</h2>
     <p class="lead">Free and MIT licensed. Needs Claude Code. About a minute, start to finish.<span class="phone-only"> On a phone? He lives on a computer, so send yourself the link.</span></p>
     <div class="plats">
@@ -471,11 +468,12 @@ if (/iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.platform
 </footer>
 
 <aside class="help" id="help" role="dialog" aria-labelledby="helpTitle" aria-hidden="true">
-  <button class="x" type="button" id="helpX" aria-label="Close">✕</button>
   <h3 id="helpTitle">Downloading</h3>
   <p class="file" id="helpFile"></p>
   <div class="busy" aria-hidden="true"></div>
   <ol id="helpSteps"></ol>
+  <a class="tipme" href="https://ko-fi.com/lithnode" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M5 1h1v2H5zM8 1h1v2H8zM2 4h10v1H2zM2 5h1v6H2zM11 5h1v6h-1zM3 11h8v1H3zM4 12h6v1H4zM12 6h2v1h-2zM14 7h1v2h-1zM12 9h2v1h-2zM3 5h8v6H3z" opacity=".25"/><path d="M5 1h1v2H5zM8 1h1v2H8zM2 4h10v1H2zM2 5h1v6H2zM11 5h1v6h-1zM3 11h8v1H3zM4 12h6v1H4zM12 6h2v1h-2zM14 7h1v2h-1zM12 9h2v1h-2zM6 7h1v1H6zM8 7h1v1H8zM5 6h1v1H5zM7 6h1v1H7zM9 6h1v1H9zM6 8h3v1H6zM7 9h1v1H7z"/></svg><span><b>Leave a tip</b>Clawd is free. If he makes your day better, buy him a coffee.</span><em>Tip →</em></a>
+  <button class="notip" type="button" id="helpX">No tip</button>
   <p class="again">Didn't start? <a id="helpAgain" href="#">Download again</a>. Need Claude Code first? <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Get it here</a>.</p>
 </aside>
 
@@ -539,7 +537,7 @@ const OS_ICON = {"win": "<svg class=\"os-i\" viewBox=\"0 0 24 24\" fill=\"curren
     }
   });
   $("helpX").onclick = hide;
-  addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+  help.querySelector(".tipme").addEventListener("click", hide);
 })();
 
 // ---------------------------------------------------------------- on a phone: send yourself the link, and download him on your computer
