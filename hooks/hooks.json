@@ -16,7 +16,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" UserPromptSubmit || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" UserPromptSubmit"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" UserPromptSubmit || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" UserPromptSubmit",
+            "async": true
           }
         ]
       }
@@ -26,7 +27,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PreToolUse || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PreToolUse"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PreToolUse || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PreToolUse",
+            "async": true
           }
         ]
       }
@@ -36,7 +38,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PostToolUse || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PostToolUse"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PostToolUse || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PostToolUse",
+            "async": true
           }
         ]
       }
@@ -46,7 +49,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PostToolUseFailure || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PostToolUseFailure"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PostToolUseFailure || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" PostToolUseFailure",
+            "async": true
           }
         ]
       }
@@ -56,7 +60,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" Notification || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" Notification"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" Notification || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" Notification",
+            "async": true
           }
         ]
       }
@@ -66,7 +71,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" Stop || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" Stop"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" Stop || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" Stop",
+            "async": true
           }
         ]
       }
@@ -76,7 +82,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" StopFailure || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" StopFailure"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" StopFailure || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" StopFailure",
+            "async": true
           }
         ]
       }
@@ -86,7 +93,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" SubagentStart || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" SubagentStart"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" SubagentStart || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" SubagentStart",
+            "async": true
           }
         ]
       }
@@ -96,7 +104,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" SubagentStop || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" SubagentStop"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hook.py\" SubagentStop || python \"${CLAUDE_PLUGIN_ROOT}/hook.py\" SubagentStop",
+            "async": true
           }
         ]
       }

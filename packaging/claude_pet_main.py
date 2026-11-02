@@ -17,6 +17,7 @@ from pathlib import Path
 
 EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
           "Notification", "Stop", "StopFailure", "SubagentStart", "SubagentStop", "SessionEnd")
+ASYNC = set(EVENTS) - {"SessionStart", "SessionEnd"}   # Claude doesn't wait on these; the ends stay in step
 SETTINGS = Path.home() / ".claude" / "settings.json"
 WINDOWS = sys.platform == "win32"
 SET_UP = Path.home() / ".claude-pet" / "installed"   # off Windows: the first start added the hooks
@@ -73,7 +74,10 @@ def install():
     _strip(hooks, _is_pet_hook)
     cli = _cli().as_posix()
     for event in EVENTS:
-        hooks.setdefault(event, []).append({"hooks": [{"type": "command", "command": f'"{cli}" hook {event}'}]})
+        hook = {"type": "command", "command": f'"{cli}" hook {event}'}
+        if event in ASYNC:
+            hook["async"] = True
+        hooks.setdefault(event, []).append({"hooks": [hook]})
     _save(data)
     if not WINDOWS:   # the Windows installer sets this up itself
         import shared

@@ -29,6 +29,7 @@ PET = Path(__file__).with_name("pet.py")
 DEFAULT_WINDOW = 200_000  # override with "context_window" in config.json
 CELEBRATE_AFTER = 30  # seconds of work before a finished task gets confetti
 SUBAGENT_STALE = 30 * 60
+TOOL_EVENTS = ("PreToolUse", "PostToolUse", "PostToolUseFailure")
 GIT = re.compile(r"\bgit\s+(?:-[Cc]\s+\S+\s+|--\S+\s+)*(commit|push)\b")  # git [-C dir] commit|push
 
 STATUS_FOR = {
@@ -286,7 +287,7 @@ def main():
 
     DIR.mkdir(parents=True, exist_ok=True)
     pid, app = claude_ancestor_pids()  # slow-ish, so look it up before taking the lock
-    status, detail, entry = "idle", "", None
+    status, detail, entry, stale = "idle", "", None, False
 
     with shared.sessions_lock():  # several hooks can fire at once (parallel tools, subagents)
         sessions = shared.live_sessions()
@@ -294,22 +295,26 @@ def main():
             sessions.pop(session_id, None)
         else:
             entry = sessions.setdefault(session_id, {})
-            entry.setdefault("started", now)
-            entry.update(ts=now, pid=pid, app=app, headless=headless())
-            cwd = payload.get("cwd")
-            if cwd:
-                entry["cwd"], entry["project"] = cwd, Path(cwd).name or cwd
-            if payload.get("transcript_path"):
-                entry["transcript"] = payload["transcript_path"]
-            status, detail = update_entry(entry, event, payload, now)
-            if not entry["headless"]:
+            # The hooks run async, so a fast tool's PreToolUse can land after its PostToolUse:
+            # a tool event older than the last one applied still counts, but doesn't speak.
+            stale = event in TOOL_EVENTS and entry.get("ts", 0) > now
+            if not stale:
+                entry.setdefault("started", now)
+                entry.update(ts=now, pid=pid, app=app, headless=headless())
+                cwd = payload.get("cwd")
+                if cwd:
+                    entry["cwd"], entry["project"] = cwd, Path(cwd).name or cwd
+                if payload.get("transcript_path"):
+                    entry["transcript"] = payload["transcript_path"]
+                status, detail = update_entry(entry, event, payload, now)
+            if not entry.get("headless"):
                 try:
                     count_today(session_id, event, payload, entry, now)
                 except OSError:
                     pass
         shared.write_sessions(sessions)
 
-    if not sessions or entry is None:
+    if not sessions or entry is None or stale:
         return
 
     # Mirror the latest activity into the files the pet reads.
