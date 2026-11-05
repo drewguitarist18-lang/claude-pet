@@ -68,6 +68,24 @@ def test_hook(command, label):
     check(f"smoke-{label}" not in json.loads(shared.SESSIONS.read_text()), f"{label}: SessionEnd removes it")
 
 
+def test_context():
+    import hook
+    for model, window in (("claude-opus-5-5", 1_000_000), ("claude-opus-4-6", 1_000_000),
+                          ("claude-haiku-4-5-20251001", 200_000), ("claude-sonnet-4-5", 200_000),
+                          ("claude-sonnet-4-5[1m]", 1_000_000), ("claude-3-5-sonnet-20241022", 200_000)):
+        check(hook.model_window(model) == window, f"context window for {model}")
+    transcript = HOME / "transcript.jsonl"
+    usage = {"input_tokens": 2, "cache_creation_input_tokens": 1000, "cache_read_input_tokens": 197000}
+    transcript.write_text("\n".join(json.dumps(r) for r in (
+        {"message": {"model": "claude-opus-5-5", "usage": usage}},
+        {"isSidechain": True, "message": {"model": "claude-haiku-5-5", "usage": {"input_tokens": 5}}},
+        {"message": {"model": "<synthetic>", "usage": {"input_tokens": 0}}},
+    )) + "\n")
+    tokens, model = hook.context_tokens(str(transcript))
+    check((tokens, model) == (198_002, "claude-opus-5-5"), "context tokens from the newest main-thread turn")
+    check(hook.context_window(tokens, model) == 1_000_000, "198k on Opus 5.5 is ~20%, not 99%")
+
+
 def test_processes():
     table = shared.process_table()
     me = os.getpid()
@@ -233,6 +251,7 @@ def main():
         test_frozen(args.frozen, args.shots)
     else:
         test_hook(PY + [str(ROOT / "hook.py")], "source")
+        test_context()
         test_processes()
         test_pet(args.shots)
     import shutil

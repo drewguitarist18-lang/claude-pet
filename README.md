@@ -91,7 +91,8 @@ Needs Python 3 with tkinter on your PATH (as `python3` or `python`). Inside Clau
 Use either the installer or the plugin, not both, or every event fires twice.
 Run him by hand (stays up without a session): `python pet.py --keep`.
 
-`~/.claude-pet/config.json` can set `"context_window"` (default 200000; it
-switches to 1,000,000 on its own if a session goes past 200k).
+The context bar reads the window size from the session's model: 1,000,000 for
+Claude 4.6 and later (and any `[1m]` model), 200,000 for older ones. To force a
+size, set `"context_window"` in `~/.claude-pet/config.json`.
 
 Not affiliated with or endorsed by Anthropic.

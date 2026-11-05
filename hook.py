@@ -26,7 +26,10 @@ from shared import CONFIG, CONTEXT, DETAIL, DIR, HEARTBEAT, LIMIT, REACT, STATUS
 
 LAUNCHING = DIR / "launching"
 PET = Path(__file__).with_name("pet.py")
-DEFAULT_WINDOW = 200_000  # override with "context_window" in config.json
+DEFAULT_WINDOW = 200_000  # older models; override everything with "context_window" in config.json
+BIG_WINDOW = 1_000_000    # Claude 4.6 and later, and any "[1m]" model
+# Models with a 200k window: Claude 3.x, and 4.0 / 4.1 / 4.5 (Haiku 4.5 included).
+SMALL_MODEL = re.compile(r"^claude-(3|[a-z]+-4(-[015])?(-\d{8})?$)")
 CELEBRATE_AFTER = 30  # seconds of work before a finished task gets confetti
 SUBAGENT_STALE = 30 * 60
 TOOL_EVENTS = ("PreToolUse", "PostToolUse", "PostToolUseFailure")
@@ -140,14 +143,14 @@ def describe_tool(payload):
 
 
 def context_tokens(transcript_path):
-    """Tokens currently in context, from the newest main-thread usage record."""
+    """(tokens in context, model) from the newest main-thread usage record, or (None, None)."""
     try:
         with open(transcript_path, "rb") as f:
             f.seek(0, 2)
             f.seek(max(0, f.tell() - 400_000))
             tail = f.read().decode("utf-8", "ignore")
     except (OSError, TypeError):
-        return None
+        return None, None
     for line in reversed(tail.splitlines()):
         if '"usage"' not in line:
             continue
@@ -155,21 +158,34 @@ def context_tokens(transcript_path):
             record = json.loads(line)
         except ValueError:
             continue
-        usage = (record.get("message") or {}).get("usage")
-        if record.get("isSidechain") or not usage:
+        message = record.get("message") or {}
+        usage = message.get("usage")
+        # "<synthetic>" records are Claude Code's own error/notice turns, not a real request.
+        if record.get("isSidechain") or not usage or message.get("model") == "<synthetic>":
             continue
-        return sum(usage.get(k, 0) for k in (
+        tokens = sum(usage.get(k, 0) for k in (
             "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
-    return None
+        return tokens, message.get("model")
+    return None, None
 
 
-def context_window(tokens):
+def model_window(model):
+    """The context window for a model id: 200k for Claude 3.x / 4.0-4.5, 1M for 4.6 and later."""
+    model = (model or "").lower()
+    if "[1m]" in model:
+        return BIG_WINDOW
+    if not model.startswith("claude-"):
+        return None  # unknown: fall back to the default
+    return DEFAULT_WINDOW if SMALL_MODEL.search(model) else BIG_WINDOW
+
+
+def context_window(tokens, model=None):
     try:
-        window = int(json.loads(CONFIG.read_text()).get("context_window", DEFAULT_WINDOW))
-    except (OSError, ValueError, TypeError):
-        window = DEFAULT_WINDOW
-    if tokens > window:  # bigger than assumed (e.g. a 1M model)
-        window = 1_000_000 if tokens <= 1_000_000 else tokens
+        window = int(json.loads(CONFIG.read_text())["context_window"])
+    except (OSError, ValueError, TypeError, KeyError):
+        window = model_window(model) or DEFAULT_WINDOW
+    if tokens > window:  # bigger than assumed: it can't be the real size
+        window = BIG_WINDOW if tokens <= BIG_WINDOW else tokens
     return window
 
 
@@ -266,9 +282,9 @@ def update_entry(entry, event, payload, now):
         k: v for k, v in entry.get("subagents", {}).items() if now - v["ts"] < SUBAGENT_STALE
     }
 
-    tokens = context_tokens(payload.get("transcript_path"))
+    tokens, model = context_tokens(payload.get("transcript_path"))
     if tokens is not None:
-        entry["tokens"], entry["window"] = tokens, context_window(tokens)
+        entry["tokens"], entry["window"] = tokens, context_window(tokens, model)
 
     if status != entry.get("status") or event in ("PreToolUse", "UserPromptSubmit"):
         entry["status_ts"] = now
