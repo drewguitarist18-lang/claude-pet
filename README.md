@@ -64,7 +64,8 @@ context-bar switches, and quit.
 - `hook.py` runs from Claude Code hooks. It keeps one entry per session in
   `~/.claude-pet/sessions.json`, mirrors the latest status for the pet and
   launches him. Lithnode's Office reads the same file.
-- `pet.py` is the desktop pet (tkinter, standard library only), with `pet_menu.py` for his menu.
+- `pet.py` is the desktop pet (tkinter, standard library only), with `pet_menu.py` for his menu and
+  `pixelfont.py`, the 3x5 pixel font for his speech bubble. Everything he draws snaps to a 3px grid.
 - `desktop.py` is the per-OS part: finding and raising Claude's window, see-through windows
   (a key color on Windows, Tk's transparent windows on the Mac, the X11 Shape extension on
   Linux), one pet at a time, the chime and fonts.

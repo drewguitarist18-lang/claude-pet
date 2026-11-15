@@ -27,6 +27,7 @@ import tkinter as tk
 from pathlib import Path
 
 import desktop
+import pixelfont
 import shared
 from desktop import app_window_visible, focus_session, lithnode_open, open_claude_app
 from pet_menu import CRAB, PetMenu, draw_seasonal, mini_clawd, outfits_now
@@ -36,9 +37,10 @@ from shared import DETAIL as DETAIL_FILE
 from shared import DIR, HEARTBEAT, LIMIT, REACT
 from shared import STATUS as STATUS_FILE
 
-CELL = 5
+CELL = 6            # one sprite cell; everything is drawn on a half-cell (3px) grid
+UNIT = CELL // 2
 COLS, ROWS = 12, 8
-W, H = 200, 112
+W, H = 224, 114
 SPRITE_W = COLS * CELL
 OX = (W - SPRITE_W) // 2
 TRANSPARENT = "#010203"
@@ -153,6 +155,16 @@ def pet_visibility(sessions):
         return False, False
     show = any(not s.get("app") or app_window_visible(s["app"]) for s in sessions)
     return True, show
+
+
+def snap(v):
+    """Round to the nearest half cell."""
+    return math.floor(v * 2 + 0.5) / 2
+
+
+DROP = (".#.", "###", "###")
+SWEAT = {"#": "#7dcfff"}
+HEART = (".##.##.", "#######", ".#####.", "..###..", "...#...")
 
 
 # ------------------------------------------------------------------------ pet
@@ -406,46 +418,55 @@ class Pet:
         return CRAB_BODY if self.lith else BODY
 
     def px(self, col, row, oy, color=None, w=1, h=1):
+        """A block on the half-cell grid: positions and sizes snap to 3px so nothing is smooth."""
         color = color or self.body
+        col, row = snap(col), snap(row)
+        w, h = max(0.5, snap(w)), max(0.5, snap(h))
         x0 = OX + col * CELL
         y0 = oy + row * CELL
         self.canvas.create_rectangle(
             x0, y0, x0 + w * CELL, y0 + h * CELL, fill=color, outline=color
         )
 
+    def blocks(self, pattern, x, y, size, colors):
+        """Pixel art from rows of characters ('.' is empty), `size` px a cell, snapped to that grid."""
+        x0, y0 = round(x / size) * size, round(y / size) * size
+        for row, line in enumerate(pattern):
+            for col, ch in enumerate(line):
+                if ch in colors:
+                    self.canvas.create_rectangle(
+                        x0 + col * size, y0 + row * size, x0 + (col + 1) * size,
+                        y0 + (row + 1) * size, fill=colors[ch], outline="")
+
     def bubble(self, text, oy, accent=None):
-        """Pixel-art speech bubble: dark body, notched corners, blocky tail."""
+        """Pixel-art speech bubble in a 3x5 pixel font: dark body, notched corners, stepped tail."""
         accent = accent or self.body
         c = self.canvas
-        if len(text) > 26:
-            text = text[:25] + "…"
-        label_y = max(16, oy - 42)  # sit just above his head (and his hat)
-        label = c.create_text(
-            W / 2, label_y, text=text, font=desktop.font("mono", 9, "bold"), fill="#e8e6f0"
-        )
-        x0, y0, x1, y1 = c.bbox(label)
-        l, t, r, b = x0 - 9, y0 - 4, x1 + 9, y1 + 4
-        n = 3  # corner notch size
+        text = pixelfont.clean(text)
+        if len(text) > 24:
+            text = text[:21] + "..."
+        scale = 2
+        tw = pixelfont.width(text, scale)
+        label_y = max(16, oy - 42)           # sit just above his head (and his hat)
+        ty = label_y - 6 - label_y % 2       # text top; everything here stays on even pixels
+        tx = (W - tw) // 2
+        tx -= tx % 2
+        l, t, r, b = tx - 8, ty - 4, tx + tw + 8, ty + 14
+        n = 4  # corner notch size
 
         def notched(l, t, r, b):
             return [l + n, t, r - n, t, r - n, t + n, r, t + n, r, b - n, r - n, b - n,
                     r - n, b, l + n, b, l + n, b - n, l, b - n, l, t + n, l + n, t + n]
 
-        shapes = [
-            c.create_polygon(notched(l - 2, t - 2, r + 2, b + 2), fill=accent, outline=accent),
-            c.create_polygon(notched(l, t, r, b), fill="#232433", outline="#232433"),
-        ]
-        cx = W / 2
-        shapes += [
-            c.create_rectangle(cx - 6, b, cx + 6, b + 4, fill=accent, outline=accent),
-            c.create_rectangle(cx - 4, b + 4, cx + 4, b + 7, fill=accent, outline=accent),
-            c.create_rectangle(cx - 2, b + 7, cx + 2, b + 9, fill=accent, outline=accent),
-            c.create_rectangle(cx - 4, b - 1, cx + 4, b + 3, fill="#232433", outline="#232433"),
-            c.create_rectangle(cx - 2, b + 3, cx + 2, b + 5, fill="#232433", outline="#232433"),
-        ]
-        for item in reversed(shapes):  # keep creation order, all behind the text
-            c.tag_lower(item)
-        c.tag_raise(label)
+        c.create_polygon(notched(l - 2, t - 2, r + 2, b + 2), fill=accent, outline=accent)
+        c.create_polygon(notched(l, t, r, b), fill="#232433", outline="#232433")
+        cx = W // 2
+        for x0, y0, x1, y1, color in (
+                (cx - 6, b, cx + 6, b + 4, accent), (cx - 4, b + 4, cx + 4, b + 8, accent),
+                (cx - 2, b + 8, cx + 2, b + 10, accent), (cx - 4, b - 2, cx + 4, b + 2, "#232433"),
+                (cx - 2, b + 2, cx + 2, b + 6, "#232433")):
+            c.create_rectangle(x0, y0, x1, y1, fill=color, outline=color)
+        pixelfont.draw(c, text, tx, ty, scale, "#e8e6f0")
 
     def draw_outfit_top(self, oy):
         outfit = self.cfg["outfit"]
@@ -479,29 +500,24 @@ class Pet:
             self.px(5.5, -0.6, oy, "#f7768e", w=1, h=0.5)
 
     def draw_outfit_face(self, oy):
-        c = self.canvas
         outfit = self.cfg["outfit"]
+        row = self.eye_row
         if outfit == "glasses":
-            ey = oy + self.eye_row * CELL
             for col in (3, 8):
-                x = OX + col * CELL
-                c.create_rectangle(x - 3, ey - 3, x + CELL + 3, ey + CELL + 3,
-                                   outline=INK, width=2)
-            c.create_line(OX + 3 * CELL + CELL + 3, ey + CELL / 2,
-                          OX + 8 * CELL - 3, ey + CELL / 2, fill=INK, width=2)
+                self.px(col - 0.5, row - 0.5, oy, INK, w=2, h=0.5)
+                self.px(col - 0.5, row + 1, oy, INK, w=2, h=0.5)
+                self.px(col - 0.5, row - 0.5, oy, INK, w=0.5, h=2)
+                self.px(col + 1, row - 0.5, oy, INK, w=0.5, h=2)
+            self.px(4.5, row + 0.5, oy, INK, w=3, h=0.5)
         elif outfit == "bow tie":
-            cx, ty = OX + 6 * CELL, oy + (5.8 if self.lith else 5.2) * CELL
-            red = "#f7768e"
-            c.create_polygon(cx - 14, ty - 6, cx - 14, ty + 6, cx, ty,
-                             fill=red, outline=INK)
-            c.create_polygon(cx + 14, ty - 6, cx + 14, ty + 6, cx, ty,
-                             fill=red, outline=INK)
-            c.create_rectangle(cx - 3, ty - 3, cx + 3, ty + 3, fill="#d4382c", outline=INK)
+            ty = oy + (5.8 if self.lith else 5.2) * CELL
+            self.blocks(("#...#", "##K##", "#...#"), OX + 6 * CELL - 7.5, ty - 4.5, UNIT,
+                        {"#": "#f7768e", "K": "#d4382c"})
 
     def draw(self, t, state, walking):
         c = self.canvas
         c.delete("all")
-        ground = H - 6
+        ground = H - 9
         now = time.time()
         juice = state == "juice"
         react = self.reaction(now)
@@ -533,10 +549,9 @@ class Pet:
         elif state == "celebrate":
             for i in range(16):
                 phase = (t * 1.1 + i * 0.37) % 1
-                x = W / 2 + (i - 8) * 11 + math.sin(t * 3 + i) * 6
+                x = W / 2 + (i - 8) * 12 + math.sin(t * 3 + i) * 6
                 y = 4 + phase * (ground - 4)
-                c.create_rectangle(x - 2, y - 2, x + 2, y + 2,
-                                   fill=CONFETTI[i % len(CONFETTI)], outline="")
+                self.blocks(("#",), x, y, CELL, {"#": CONFETTI[i % len(CONFETTI)]})
 
         if self.lith:
             self.draw_crab(t, state, walking, oy)
@@ -568,31 +583,27 @@ class Pet:
         blink = state == "idle" and not walking and (t % 4.5) < 0.15
         wink = state in ("idle", "working") and tired < 2 and (t % 6.5) < 0.4
         yawn = tired >= 2 and state == "idle" and not walking and (t % 22) < 1.6
-        shift = 1 if (walking and self.direction > 0) else 0
-        lid = (0, 1, 2.5, 3.8)[tired]  # eyelid height in px: heavier as context fills
+        shift = UNIT if (walking and self.direction > 0) else 0
+        lid = (0, 2, 3, 4)[tired]  # eyelid height in px: heavier as context fills
         for col in (3, 8):
             x0 = OX + col * CELL
             y0 = oy + self.eye_row * CELL
             if state == "sleeping" or blink or yawn or (wink and col == 8):
                 self.px(col, self.eye_row + 0.3, oy, color=EYE, h=0.4)
             elif state == "celebrate" or (petted and not juice):
-                c.create_line(x0, y0 + CELL, x0 + CELL / 2, y0, x0 + CELL, y0 + CELL,
-                              fill=EYE, width=2)
+                self.px(col, self.eye_row, oy, color=EYE)           # happy eyes: a block arch
+                self.px(col - 1, self.eye_row + 1, oy, color=EYE)
+                self.px(col + 1, self.eye_row + 1, oy, color=EYE)
             else:
-                x0 += shift if self.direction > 0 else -shift
+                x0 += shift
                 c.create_rectangle(x0, y0, x0 + CELL, y0 + CELL, fill=EYE, outline=EYE)
                 if lid:
-                    c.create_rectangle(x0 - 1, y0 - 1, x0 + CELL + 1, y0 + lid,
-                                       fill=self.body, outline=self.body)
+                    c.create_rectangle(x0, y0, x0 + CELL, y0 + lid, fill=self.body, outline=self.body)
         if yawn:
             mouth = self.eye_row + (0.6 if self.lith else 2)
-            c.create_rectangle(OX + 5 * CELL, oy + mouth * CELL, OX + 7 * CELL, oy + (mouth + 1.2) * CELL,
-                               fill=EYE, outline=EYE)
+            self.px(5, mouth, oy, color=EYE, w=2)
         if tired == 3 and state != "sleeping":
-            sway = math.sin(t * 2) * 1.5
-            drop_x = OX + 9.5 * CELL + sway
-            c.create_polygon(drop_x, oy - 8, drop_x - 3, oy - 2, drop_x + 3, oy - 2,
-                             fill="#7dcfff", outline="#4aa3d8")
+            self.blocks(DROP, OX + 9.5 * CELL + math.sin(t * 2) * 3, oy - 12, UNIT, SWEAT)
 
         self.draw_outfit_face(oy)
         self.draw_outfit_top(oy)
@@ -601,13 +612,10 @@ class Pet:
         self.draw_hearts(now, oy)
 
         if working and self.lith:
-            self.px(2.0, 5.0, oy, color="#3b3b44", w=8.0, h=2.4)
-            self.px(2.4, 5.3, oy, color="#1f2430", w=7.2, h=1.8)
-            for i in range(2):
-                width = 2.0 + ((int(t * 3) + i * 3) % 5)
-                shade = ("#9ece6a", "#7dcfff", "#e0af68")[(int(t * 3) + i) % 3]
-                self.px(2.8, 5.6 + i * 0.8, oy, color=shade, w=width, h=0.4)
-            self.px(1.0, 7.3, oy, color="#8a8a92", w=10.0, h=0.7)
+            self.px(2, 5, oy, color="#3b3b44", w=8, h=2)
+            self.px(2.5, 5.5, oy, color="#1f2430", w=7, h=1.5)
+            self.code_lines(t, oy, 3, 5)
+            self.px(1, 7, oy, color="#8a8a92", w=10, h=0.5)
         if juice:
             self.bubble("Out of juice · " + back_at(self.limit_until, now), oy, accent="#e0af68")
         elif react == "oops":
@@ -626,11 +634,7 @@ class Pet:
         if state == "sleeping":
             for i in range(3):
                 phase = (t * 0.45 + i / 3) % 1
-                if getattr(self.reshape, "shaped", False):   # a shaped window shows text as a box
-                    self.pixel_z(W / 2 + 24 + phase * 16, oy - 2 - phase * 26, 2 + round(phase * 1.5))
-                    continue
-                c.create_text(W / 2 + 24 + phase * 16, oy - 2 - phase * 26, text="z",
-                              fill="#7a7f99", font=desktop.font("ui", int(8 + phase * 6), "bold"))
+                self.pixel_z(W / 2 + 30 + phase * 18, oy - 4 - phase * 28, UNIT)
         elif tired == 3 and not (react or working or state in ("waiting", "celebrate")):
             self.bubble(f"Context {self.context_fill:.0%} full", oy, accent="#e0af68")
 
@@ -640,7 +644,7 @@ class Pet:
 
     def pixel_z(self, cx, cy, size):
         """A blocky z, 4x4 cells of `size` px, centered at (cx, cy)."""
-        x0, y0 = round(cx - 2 * size), round(cy - 2 * size)
+        x0, y0 = round((cx - 2 * size) / size) * size, round((cy - 2 * size) / size) * size
         for col, row in ((0, 0), (1, 0), (2, 0), (3, 0), (2, 1), (1, 2), (0, 3), (1, 3), (2, 3), (3, 3)):
             self.canvas.create_rectangle(x0 + col * size, y0 + row * size, x0 + (col + 1) * size,
                                          y0 + (row + 1) * size, fill="#7a7f99", outline="")
@@ -651,13 +655,17 @@ class Pet:
 
     def draw_laptop(self, t, oy):
         """Clawd's little laptop: dark lid, glowing screen of scrolling code, base."""
-        self.px(1.6, 2.3, oy, color="#3b3b44", w=8.8, h=3.5)
-        self.px(2.0, 2.7, oy, color="#1f2430", w=8.0, h=2.7)
-        for i in range(3):
-            width = 2.0 + ((int(t * 3) + i * 3) % 5)
+        self.px(2, 2, oy, color="#3b3b44", w=8, h=4)
+        self.px(2.5, 2.5, oy, color="#1f2430", w=7, h=3)
+        self.code_lines(t, oy, 3, 2.5)
+        self.px(1, 6, oy, color="#8a8a92", w=10, h=0.5)
+
+    def code_lines(self, t, oy, col, row):
+        """Two lines of 'code' that scroll on the laptop's screen."""
+        for i in range(2):
+            width = 1 + ((int(t * 3) + i * 3) % 4)
             shade = ("#9ece6a", "#7dcfff", "#e0af68")[(int(t * 3) + i) % 3]
-            self.px(2.4, 3.0 + i * 0.8, oy, color=shade, w=width, h=0.4)
-        self.px(1.0, 5.8, oy, color="#8a8a92", w=10.0, h=0.7)
+            self.px(col, row + 0.5 + i, oy, color=shade, w=width, h=0.5)
 
     def draw_crab(self, t, state, walking, oy):
         """Lithnode's crab. Claws (rows 0-2) snap in turn when working, both wave when waiting and go up
@@ -693,79 +701,70 @@ class Pet:
         else:
             self.px(0, 2, oy, color=self.body, w=2, h=2)
             self.px(1.6, 0.6, oy, color="#b85f42", w=4.6, h=1.3)
-        drop_x = OX + 10 * CELL
-        self.canvas.create_polygon(drop_x, oy - 4, drop_x - 3, oy + 2, drop_x + 3, oy + 2,
-                                   fill="#7dcfff", outline="#4aa3d8")
+        self.blocks(DROP, OX + 10 * CELL - 4, oy - 6, UNIT, SWEAT)
 
     def draw_fireworks(self, age):
         """Three bursts popping one after another above his head."""
         c = self.canvas
-        for i, (bx, by) in enumerate(((W / 2 - 62, 34), (W / 2 + 62, 26), (W / 2 + 74, 66))):
+        for i, (bx, by) in enumerate(((W / 2 - 66, 34), (W / 2 + 66, 26), (W / 2 + 80, 66))):
             phase = (age - i * 0.35) / 1.1
             if not 0 <= phase <= 1:
                 continue
-            radius = 3 + phase * 17
+            radius = 3 + phase * 20
             color = CONFETTI[(i * 2) % len(CONFETTI)]
-            size = 2.5 * (1 - phase) + 1
             for k in range(10):
                 angle = k / 10 * math.tau
                 x = bx + math.cos(angle) * radius
                 y = by + math.sin(angle) * radius + phase * phase * 8
-                c.create_rectangle(x - size, y - size, x + size, y + size, fill=color, outline="")
+                self.blocks(("#",), x, y, UNIT, {"#": color})
 
     def draw_hearts(self, now, oy):
         """Pixel hearts floating up after he's petted."""
-        shape = (".##.##.", "#######", ".#####.", "..###..", "...#...")
         for start, dx in self.hearts:
             age = now - start
             if not 0 <= age < 1.3:
                 continue
-            x0 = W / 2 + dx - 7
-            y0 = oy - 18 - age * 28
-            for row, line in enumerate(shape):
-                for col, ch in enumerate(line):
-                    if ch == "#":
-                        self.canvas.create_rectangle(x0 + col * 2, y0 + row * 2, x0 + col * 2 + 2,
-                                                     y0 + row * 2 + 2, fill="#f7768e", outline="")
+            self.blocks(HEART, W / 2 + dx - 10, oy - 24 - age * 28, UNIT, {"#": "#f7768e"})
 
     def draw_buddies(self, now, ground):
         """Tiny Clawds (or crabs) for running subagents: two slots each side, a hop when one
         shows up, and a walk off when it's done. More than four shows as +N."""
         c = self.canvas
-        offsets = (-50, 50, -78, 78)
+        offsets = (-60, 60, -92, 92)
         shown = sorted(self.buddies.values(), key=lambda b: b["slot"])
         extra = sum(1 for b in shown if b["slot"] >= len(offsets) and not b["gone"])
         for buddy in shown:
             if buddy["slot"] >= len(offsets):
                 continue
             dx = offsets[buddy["slot"]]
-            x = W / 2 + dx - 12
-            y = ground - 16
+            x = W / 2 + dx - 18
+            y = ground - 24
             age = now - buddy["born"]
             if age < 0.4:
-                y -= math.sin(age / 0.4 * math.pi) * 8
+                y -= math.sin(age / 0.4 * math.pi) * 9
             elif buddy["gone"]:
                 gone = now - buddy["gone"]
                 x += math.copysign(gone * 60, dx)
-                y -= 1 if int(gone * 8) % 2 else 0
+                y -= UNIT if int(gone * 8) % 2 else 0
             else:
-                y -= 1 if int((now + buddy["slot"]) * 4) % 2 else 0
-            if -24 < x < W:
-                mini_clawd(c, x, y, 2, self.body, "none", crab=self.lith)
+                y -= UNIT if int((now + buddy["slot"]) * 4) % 2 else 0
+            if -36 < x < W:
+                mini_clawd(c, round(x / UNIT) * UNIT, round(y / UNIT) * UNIT, UNIT, self.body, "none",
+                           crab=self.lith)
         if extra:
-            c.create_text(W / 2 + 96, ground - 20, text=f"+{extra}", anchor="e",
-                          font=desktop.font("mono", 8, "bold"), fill=self.body)
+            label = pixelfont.clean(f"+{extra}")
+            pixelfont.draw(c, label, W - 12 - pixelfont.width(label, 2), ground - 22, 2, self.body)
 
     def draw_energy_bar(self):
-        """Tiny pixel bar under his feet that fills up with the context window."""
+        """Tiny pixel bar under his feet: eight blocks that fill up with the context window."""
         c = self.canvas
-        left = OX + 10
-        width = SPRITE_W - 20
+        left = OX + 2 * CELL
         used = self.context_fill
         color = "#9ece6a" if used < 0.5 else "#e0af68" if used < 0.75 else "#f7768e"
-        top = H - 4
-        c.create_rectangle(left - 1, top - 1, left + width + 1, top + 3, fill="#232433", outline="")
-        c.create_rectangle(left, top, left + width * used, top + 2, fill=color, outline="")
+        top = H - 6
+        filled = max(1, round(used * 8)) if used > 0 else 0
+        c.create_rectangle(left, top, left + 8 * CELL, top + UNIT, fill="#232433", outline="")
+        c.create_rectangle(left, top, left + filled * CELL, top + UNIT, fill=color, outline="")
 
     def run(self):
         self.root.mainloop()

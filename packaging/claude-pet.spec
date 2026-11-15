@@ -10,7 +10,7 @@ WINDOWS, MAC = sys.platform == "win32", sys.platform == "darwin"
 a = Analysis(
     [str(HERE / "claude_pet_main.py")],
     pathex=[str(ROOT)],
-    hiddenimports=["hook", "pet", "pet_menu", "desktop", "shared", "tkinter"] + (["winsound"] if WINDOWS else []),
+    hiddenimports=["hook", "pet", "pet_menu", "desktop", "shared", "pixelfont", "tkinter"] + (["winsound"] if WINDOWS else []),
     excludes=["test", "unittest", "pydoc_data", "email", "http", "sqlite3"] + ([] if MAC else ["xml"]),  # plistlib needs xml
 )
 pyz = PYZ(a.pure)
